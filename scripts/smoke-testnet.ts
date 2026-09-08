@@ -53,8 +53,9 @@ async function fetchStorkUpdate(apiKey: string) {
 }
 
 async function main() {
-  const apiKey = process.env.STORK_API_KEY;
-  if (!apiKey) throw new Error("STORK_API_KEY is required for the real testnet smoke test");
+  const apiKeyValue = process.env.STORK_API_KEY;
+  if (!apiKeyValue) throw new Error("STORK_API_KEY is required for the real testnet smoke test");
+  const apiKey: string = apiKeyValue;
 
   const network = await ethers.provider.getNetwork();
   if (network.chainId !== EXPECTED_CHAIN_ID) throw new Error(`Wrong chain ${network.chainId}`);
