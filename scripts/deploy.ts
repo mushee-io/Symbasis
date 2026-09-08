@@ -7,21 +7,31 @@ const STORK_ADDRESS = "0xacC0a0cF13571d30B4b8637996F5D6D774d4fd62";
 const ETH_USD_FEED = "0x59102b37de83bdda9f38ac8254e596f0d9ac61d2035c07936675e87342817160";
 const BTC_USD_FEED = "0x7404e3d104ea7841c3d9e6fd20adfe99b4ad586bc08d8f3bd3afef894cf184de";
 
+async function requireCode(address: string, label: string) {
+  const code = await ethers.provider.getCode(address);
+  if (code === "0x") throw new Error(`${label} has no bytecode at ${address}`);
+}
+
 async function main() {
   const [deployer] = await ethers.getSigners();
-  const network = await ethers.provider.getNetwork();
+  if (!deployer) throw new Error("No deployer signer configured. Set PRIVATE_KEY locally or HORIZEN_DEPLOYER_PRIVATE_KEY in CI.");
 
+  const network = await ethers.provider.getNetwork();
   if (network.chainId !== HORIZEN_TESTNET_CHAIN_ID) {
     throw new Error(`Refusing deployment: expected Horizen testnet ${HORIZEN_TESTNET_CHAIN_ID}, got ${network.chainId}`);
   }
+
+  await requireCode(STORK_ADDRESS, "Stork oracle");
 
   const balance = await ethers.provider.getBalance(deployer.address);
   if (balance === 0n) {
     throw new Error(`Deployer ${deployer.address} has no Horizen testnet ETH. Fund it from https://hub-testnet.horizen.io/`);
   }
 
+  const deploymentBlockStart = await ethers.provider.getBlockNumber();
   console.log(`Deploying Symbasis from ${deployer.address}`);
   console.log(`Deployer ETH: ${ethers.formatEther(balance)}`);
+  console.log(`Starting block: ${deploymentBlockStart}`);
 
   const MockUSDC = await ethers.getContractFactory("MockUSDC");
   const usdc = await MockUSDC.deploy();
@@ -51,49 +61,88 @@ async function main() {
   const intents = await Intents.deploy();
   await intents.waitForDeployment();
 
-  await (await vault.setEngine(await engine.getAddress())).wait();
+  const addresses = {
+    mockUSDC: await usdc.getAddress(),
+    vault: await vault.getAddress(),
+    marketRegistry: await registry.getAddress(),
+    storkOracleAdapter: await oracle.getAddress(),
+    perpEngine: await engine.getAddress(),
+    confidentialIntentRegistry: await intents.getAddress()
+  };
+
+  for (const [label, address] of Object.entries(addresses)) {
+    await requireCode(address, label);
+  }
+
+  const configureEngineTx = await vault.setEngine(addresses.perpEngine);
+  await configureEngineTx.wait();
 
   const ethMarketId = ethers.id("ETH-PERP");
   const btcMarketId = ethers.id("BTC-PERP");
-  const maxLeverageBps = 100_000; // 10x
-  const maintenanceMarginBps = 500; // 5%
+  const maxLeverageBps = 100_000;
+  const maintenanceMarginBps = 500;
   const maxPositionSize = ethers.parseUnits("100000", 6);
   const maxOpenInterest = ethers.parseUnits("1000000", 6);
 
-  await (
-    await registry.addMarket(
-      ethMarketId,
-      "ETH-PERP",
-      ETH_USD_FEED,
-      maxLeverageBps,
-      maintenanceMarginBps,
-      maxPositionSize,
-      maxOpenInterest
-    )
-  ).wait();
+  const addEthTx = await registry.addMarket(
+    ethMarketId,
+    "ETH-PERP",
+    ETH_USD_FEED,
+    maxLeverageBps,
+    maintenanceMarginBps,
+    maxPositionSize,
+    maxOpenInterest
+  );
+  await addEthTx.wait();
 
-  await (
-    await registry.addMarket(
-      btcMarketId,
-      "BTC-PERP",
-      BTC_USD_FEED,
-      maxLeverageBps,
-      maintenanceMarginBps,
-      maxPositionSize,
-      maxOpenInterest
-    )
-  ).wait();
+  const addBtcTx = await registry.addMarket(
+    btcMarketId,
+    "BTC-PERP",
+    BTC_USD_FEED,
+    maxLeverageBps,
+    maintenanceMarginBps,
+    maxPositionSize,
+    maxOpenInterest
+  );
+  await addBtcTx.wait();
 
   const seedMint = ethers.parseUnits("1000000", 6);
   const seedLiquidity = ethers.parseUnits("500000", 6);
-  await (await usdc.mint(deployer.address, seedMint)).wait();
-  await (await usdc.approve(await vault.getAddress(), seedLiquidity)).wait();
-  await (await vault.seedLiquidity(seedLiquidity)).wait();
+  const mintTx = await usdc.mint(deployer.address, seedMint);
+  await mintTx.wait();
+  const approveTx = await usdc.approve(addresses.vault, seedLiquidity);
+  await approveTx.wait();
+  const seedTx = await vault.seedLiquidity(seedLiquidity);
+  await seedTx.wait();
 
+  // Finalize the vault only after all initial protocol liquidity is seeded.
+  const lockEngineTx = await vault.lockEngine();
+  await lockEngineTx.wait();
+
+  // Deployment invariants. Abort before writing an artifact if any wiring is wrong.
+  if ((await vault.engine()).toLowerCase() !== addresses.perpEngine.toLowerCase()) {
+    throw new Error("Vault engine wiring mismatch");
+  }
+  if (!(await vault.engineLocked())) throw new Error("Vault engine was not locked");
+  if ((await vault.liquidityBalance()) !== seedLiquidity) throw new Error("Seed liquidity mismatch");
+  if ((await oracle.stork()).toLowerCase() !== STORK_ADDRESS.toLowerCase()) throw new Error("Stork adapter wiring mismatch");
+
+  const ethMarket = await registry.getMarket(ethMarketId);
+  const btcMarket = await registry.getMarket(btcMarketId);
+  if (!ethMarket.active || ethMarket.feedId.toLowerCase() !== ETH_USD_FEED.toLowerCase()) {
+    throw new Error("ETH-PERP market wiring mismatch");
+  }
+  if (!btcMarket.active || btcMarket.feedId.toLowerCase() !== BTC_USD_FEED.toLowerCase()) {
+    throw new Error("BTC-PERP market wiring mismatch");
+  }
+
+  const deploymentBlockEnd = await ethers.provider.getBlockNumber();
   const deployment = {
     chainId: Number(network.chainId),
     network: "horizen-testnet",
     deployer: deployer.address,
+    deploymentBlockStart,
+    deploymentBlockEnd,
     stork: STORK_ADDRESS,
     feeds: {
       ETHUSD: ETH_USD_FEED,
@@ -103,24 +152,46 @@ async function main() {
       ETH_PERP: ethMarketId,
       BTC_PERP: btcMarketId
     },
-    contracts: {
-      mockUSDC: await usdc.getAddress(),
-      vault: await vault.getAddress(),
-      marketRegistry: await registry.getAddress(),
-      storkOracleAdapter: await oracle.getAddress(),
-      perpEngine: await engine.getAddress(),
-      confidentialIntentRegistry: await intents.getAddress()
+    contracts: addresses,
+    transactions: {
+      deployMockUSDC: usdc.deploymentTransaction()?.hash ?? null,
+      deployVault: vault.deploymentTransaction()?.hash ?? null,
+      deployMarketRegistry: registry.deploymentTransaction()?.hash ?? null,
+      deployStorkOracleAdapter: oracle.deploymentTransaction()?.hash ?? null,
+      deployPerpEngine: engine.deploymentTransaction()?.hash ?? null,
+      deployConfidentialIntentRegistry: intents.deploymentTransaction()?.hash ?? null,
+      configureEngine: configureEngineTx.hash,
+      addEthMarket: addEthTx.hash,
+      addBtcMarket: addBtcTx.hash,
+      mintSeedCollateral: mintTx.hash,
+      approveSeedLiquidity: approveTx.hash,
+      seedLiquidity: seedTx.hash,
+      lockEngine: lockEngineTx.hash
     }
   };
 
   const outDir = path.join(process.cwd(), "deployments");
   fs.mkdirSync(outDir, { recursive: true });
+  const jsonPath = path.join(outDir, "horizen-testnet.json");
+  fs.writeFileSync(jsonPath, JSON.stringify(deployment, null, 2) + "\n");
+
+  const envPath = path.join(outDir, "horizen-testnet.web.env");
   fs.writeFileSync(
-    path.join(outDir, "horizen-testnet.json"),
-    JSON.stringify(deployment, null, 2) + "\n"
+    envPath,
+    [
+      `NEXT_PUBLIC_MOCK_USDC_ADDRESS=${addresses.mockUSDC}`,
+      `NEXT_PUBLIC_VAULT_ADDRESS=${addresses.vault}`,
+      `NEXT_PUBLIC_MARKET_REGISTRY_ADDRESS=${addresses.marketRegistry}`,
+      `NEXT_PUBLIC_STORK_ADAPTER_ADDRESS=${addresses.storkOracleAdapter}`,
+      `NEXT_PUBLIC_PERP_ENGINE_ADDRESS=${addresses.perpEngine}`,
+      `NEXT_PUBLIC_CONFIDENTIAL_INTENT_REGISTRY_ADDRESS=${addresses.confidentialIntentRegistry}`,
+      ""
+    ].join("\n")
   );
 
+  console.log("Symbasis deployment verified and finalized.");
   console.log(JSON.stringify(deployment, null, 2));
+  console.log(`Web env written to ${envPath}`);
 }
 
 main().catch((error) => {
