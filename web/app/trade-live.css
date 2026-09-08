@@ -1,0 +1,90 @@
+/* Live Symbasis market layer — simulated order flow anchored to the deployed oracle. */
+.sym-trade-route .sym-nav-links a { text-transform:uppercase; font-family:var(--sym-mono); font-size:10px; font-weight:800; letter-spacing:.045em; }
+
+/* The old session line chart remains in the code as a fallback; the live candlestick surface replaces it visually. */
+.sym-trade-route .market-panel > .chart,
+.sym-trade-route .market-panel > .chart-empty,
+.sym-trade-route .market-panel > .chart-footer { display:none !important; }
+
+.live-market-surface { width:calc(100% - 302px); height:528px; background:#08090b; border-top:0; color:#dfe1de; font-family:var(--sym-mono); }
+.live-chart-toolbar { height:42px; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:0 12px; background:#0a0b0e; border-bottom:1px solid #22252a; overflow:hidden; }
+.live-chart-tabs { height:42px; display:flex; align-items:center; }
+.live-chart-tabs button { height:42px; min-width:38px; padding:0 9px; border:0; border-right:1px solid #1b1e22; background:transparent; color:#646971; cursor:pointer; font:800 8px/1 var(--sym-mono); }
+.live-chart-tabs button:hover { color:#c5c7c3; }
+.live-chart-tabs button.is-active { color:#f4f4f0; background:#111318; box-shadow:inset 0 -1px 0 #e6e6e1; }
+.live-chart-metrics { display:flex; align-items:center; gap:15px; min-width:0; white-space:nowrap; color:#5f646b; font:700 7px/1 var(--sym-mono); letter-spacing:.04em; }
+.live-chart-metrics b { margin-left:4px; color:#aeb1b5; font-weight:800; }
+.live-chart-metrics .sim-label { padding-left:13px; border-left:1px solid #24272c; color:#777b82; }
+.flow-buy { color:#62df91 !important; }
+.flow-sell { color:#ff707c !important; }
+
+.live-chart-wrap { position:relative; width:100%; height:450px; background:#08090b; overflow:hidden; cursor:crosshair; }
+.live-candle-chart { display:block; width:100%; height:100%; }
+.chart-grid-line { stroke:#171a1e; stroke-width:1; vector-effect:non-scaling-stroke; }
+.candle-wick { stroke:currentColor; stroke-width:1; vector-effect:non-scaling-stroke; }
+.candle-body { fill:currentColor; }
+.volume-body { fill:currentColor; opacity:.22; }
+.candle-up { color:#58d98a; }
+.candle-down { color:#ee6470; }
+.current-price-line { stroke:#b9bbb7; stroke-width:.8; stroke-dasharray:4 4; opacity:.72; vector-effect:non-scaling-stroke; }
+.price-tag-bg { fill:#e8e8e4; }
+.price-tag-text { fill:#111216; font:800 9px/1 var(--sym-mono); }
+.axis-label { fill:#5f646b; font:700 8px/1 var(--sym-mono); }
+.crosshair { stroke:#777b82; stroke-width:.7; stroke-dasharray:3 4; opacity:.52; vector-effect:non-scaling-stroke; }
+.live-chart-badge { position:absolute; top:13px; left:14px; display:grid; grid-template-columns:auto auto; gap:4px 12px; min-width:150px; padding:9px 10px; background:rgba(9,10,12,.88); border:1px solid #292c31; backdrop-filter:blur(5px); }
+.live-chart-badge strong { grid-column:1/-1; color:#e8e9e5; font:800 9px/1 var(--sym-mono); letter-spacing:.04em; }
+.live-chart-badge span { color:#666b72; font:700 7px/1 var(--sym-mono); }
+.live-chart-badge b { font:800 10px/1 var(--sym-mono); text-align:right; }
+.live-chart-footer { height:36px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 12px; border-top:1px solid #202328; background:#090a0c; color:#5c6168; font:700 7px/1 var(--sym-mono); letter-spacing:.055em; }
+
+/* Real-time MM depth + live fill tape. */
+.premium-depth-book { height:592px; }
+.depth-tabs { height:42px; }
+.depth-tabs strong,.depth-tabs span,.depth-tabs b { height:42px; }
+.depth-head { height:24px; }
+.depth-side { padding:2px 0; }
+.depth-row { height:18px; font-size:8px; }
+.depth-mark { height:44px; }
+.depth-mark strong { font-size:18px; }
+.tape-head { height:24px; display:grid; grid-template-columns:58px 1fr 56px 45px; align-items:center; padding:0 8px; border-top:1px solid #26292e; border-bottom:1px solid #1b1e22; color:#565b62; font:700 7px/1 var(--sym-mono); }
+.tape-head span:not(:first-child) { text-align:right; }
+.live-fill-tape { height:156px; overflow:hidden; background:#090a0c; }
+.fill-row { height:22px; display:grid; grid-template-columns:58px 1fr 56px 45px; align-items:center; padding:0 8px; border-bottom:1px solid #15171b; color:#747981; font:700 8px/1 var(--sym-mono); font-variant-numeric:tabular-nums; animation:fill-flash .28s ease-out; }
+.fill-row > *:not(:first-child) { text-align:right; }
+.fill-row strong { font-weight:800; }
+.fill-row.is-buy strong,.fill-row.is-buy b { color:#5cdf8c; }
+.fill-row.is-sell strong,.fill-row.is-sell b { color:#f16a76; }
+.fill-empty { height:100%; display:grid; place-items:center; color:#474b51; font:700 8px/1 var(--sym-mono); }
+@keyframes fill-flash { from { background:#171a1d; } to { background:transparent; } }
+.depth-foot { height:28px; font-size:6.5px; }
+
+/* Dense lower records: actual Horizen events survive refresh and sit below session actions. */
+.onchain-ledger { border-top:1px solid #292c31; background:#090a0c; }
+.ledger-tabs { min-height:38px; display:flex; align-items:center; gap:0; border-bottom:1px solid #22252a; color:#646971; overflow-x:auto; white-space:nowrap; }
+.ledger-tabs strong,.ledger-tabs span { height:38px; display:flex; align-items:center; padding:0 13px; border-right:1px solid #1d2024; font:800 8px/1 var(--sym-mono); }
+.ledger-tabs strong { color:#f0f0ed; box-shadow:inset 0 -1px 0 #e7e7e3; }
+.ledger-tabs b { margin-left:auto; padding:0 12px; color:#565b62; font:700 7px/1 var(--sym-mono); }
+.ledger-table { width:100%; }
+.ledger-head,.ledger-entry { display:grid; grid-template-columns:88px 90px 72px 1fr 1fr 1fr 62px; align-items:center; min-width:720px; }
+.ledger-head { height:28px; padding:0 12px; color:#50555c; border-bottom:1px solid #191c20; font:700 7px/1 var(--sym-mono); letter-spacing:.04em; }
+.ledger-entry { min-height:32px; padding:0 12px; border-bottom:1px solid #16191d; color:#797e85; font:700 8px/1 var(--sym-mono); }
+.ledger-entry:hover { background:#0d0f12; }
+.ledger-entry strong { color:#dddeda; }
+.ledger-entry a { color:#91959b; text-decoration:none; text-align:right; }
+
+/* Order ticket additions from the base terminal read more like a professional execution panel. */
+.sym-trade-route .order-panel::before { content:"MARKET ORDER · ISOLATED MARGIN"; display:block; margin:-4px 0 12px; padding-bottom:10px; border-bottom:1px solid #202328; color:#5f646b; font:800 7px/1 var(--sym-mono); letter-spacing:.08em; }
+.sym-trade-route .order-summary::after { content:"LIMIT / TRIGGER / TP-SL EXECUTION MODULE · TESTNET ROADMAP"; display:block; padding-top:10px; color:#4e535a; font:700 6.5px/1.3 var(--sym-mono); letter-spacing:.04em; }
+
+@media (max-width:1260px) {
+  .live-market-surface { width:100%; }
+}
+@media (max-width:720px) {
+  .live-chart-toolbar { height:auto; min-height:48px; align-items:flex-start; flex-direction:column; padding:6px 8px; }
+  .live-chart-tabs { width:100%; overflow-x:auto; height:34px; }
+  .live-chart-tabs button { height:34px; }
+  .live-chart-metrics { width:100%; overflow-x:auto; padding-bottom:5px; }
+  .live-chart-wrap { height:360px; }
+  .live-chart-footer { height:auto; min-height:40px; flex-direction:column; align-items:flex-start; justify-content:center; }
+  .ledger-head,.ledger-entry { grid-template-columns:76px 80px 60px 110px 110px 100px 55px; }
+}
