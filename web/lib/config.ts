@@ -9,12 +9,17 @@ export const HORIZEN_TESTNET = {
 } as const;
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+export const ORACLE_MODE = (process.env.NEXT_PUBLIC_ORACLE_MODE ?? "demo").toLowerCase() === "stork" ? "stork" : "demo";
+export const ORACLE_LABEL = ORACLE_MODE === "stork" ? "STORK" : "DEMO ORACLE";
+
+const oracleAddress = process.env.NEXT_PUBLIC_ORACLE_ADDRESS ?? process.env.NEXT_PUBLIC_STORK_ADAPTER_ADDRESS ?? ZERO_ADDRESS;
 
 export const CONTRACTS = {
   mockUSDC: process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS ?? ZERO_ADDRESS,
   vault: process.env.NEXT_PUBLIC_VAULT_ADDRESS ?? ZERO_ADDRESS,
   marketRegistry: process.env.NEXT_PUBLIC_MARKET_REGISTRY_ADDRESS ?? ZERO_ADDRESS,
-  storkAdapter: process.env.NEXT_PUBLIC_STORK_ADAPTER_ADDRESS ?? ZERO_ADDRESS,
+  oracle: oracleAddress,
+  storkAdapter: oracleAddress,
   perpEngine: process.env.NEXT_PUBLIC_PERP_ENGINE_ADDRESS ?? ZERO_ADDRESS,
   intents: process.env.NEXT_PUBLIC_CONFIDENTIAL_INTENT_REGISTRY_ADDRESS ?? ZERO_ADDRESS
 } as const;
