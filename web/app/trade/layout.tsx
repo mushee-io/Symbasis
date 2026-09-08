@@ -2,6 +2,7 @@ import TerminalNav from "@/components/TerminalNav";
 import PremiumDepthBook from "@/components/PremiumDepthBook";
 import LiveMarketSurface from "@/components/LiveMarketSurface";
 import OnchainActivity from "@/components/OnchainActivity";
+import OrderIntentControls from "@/components/OrderIntentControls";
 import "../trade-premium.css";
 import "../trade-live.css";
 
@@ -12,6 +13,7 @@ export default function TradeLayout({ children }: { children: React.ReactNode })
       <PremiumDepthBook />
       <LiveMarketSurface />
       <OnchainActivity />
+      <OrderIntentControls />
       {children}
     </div>
   );
