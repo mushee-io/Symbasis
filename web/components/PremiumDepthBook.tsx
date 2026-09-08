@@ -1,77 +1,80 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { MMSnapshot, MMTrade } from "@/lib/mm/engine";
 
-type Level = { price: number; size: number; total: number; depth: number };
-
-function parsePrice(value: string | null | undefined) {
-  const parsed = Number(String(value ?? "").replace(/[^0-9.]/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function buildSide(mark: number, side: "ask" | "bid"): Level[] {
-  if (!mark) return [];
-  const sign = side === "ask" ? 1 : -1;
-  let running = 0;
-  return Array.from({ length: 10 }, (_, index) => {
-    const distance = (index + 1) * 0.00032;
-    const price = mark * (1 + sign * distance);
-    const size = 0.38 + ((index * 17 + 7) % 23) / 5.2;
-    running += size;
-    return { price, size, total: running, depth: 24 + ((index * 31 + 19) % 72) };
-  });
+function formatPrice(value: number) {
+  const digits = value >= 10_000 ? 0 : value >= 1_000 ? 1 : 2;
+  return value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 export default function PremiumDepthBook() {
-  const [mark, setMark] = useState(0);
-  const [symbol, setSymbol] = useState("PERP");
+  const [snapshot, setSnapshot] = useState<MMSnapshot | null>(null);
+  const [fills, setFills] = useState<MMTrade[]>([]);
 
   useEffect(() => {
-    const readTerminal = () => {
-      const markNode = document.querySelector(".sym-trade-route .price-box strong");
-      const symbolNode = document.querySelector(".sym-trade-route .market-title > span");
-      const next = parsePrice(markNode?.textContent);
-      if (next > 0) setMark(next);
-      if (symbolNode?.textContent) setSymbol(symbolNode.textContent.trim());
+    const onSnapshot = (event: Event) => {
+      const next = (event as CustomEvent<MMSnapshot>).detail;
+      if (!next) return;
+      setSnapshot(next);
+      setFills((previous) => {
+        const byId = new Map<string, MMTrade>();
+        [...next.trades, ...previous].forEach((trade) => byId.set(trade.id, trade));
+        return [...byId.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+      });
     };
-
-    readTerminal();
-    const observer = new MutationObserver(readTerminal);
-    observer.observe(document.body, { subtree: true, childList: true, characterData: true });
-    return () => observer.disconnect();
+    window.addEventListener("symbasis:mm-snapshot", onSnapshot as EventListener);
+    return () => window.removeEventListener("symbasis:mm-snapshot", onSnapshot as EventListener);
   }, []);
 
-  const asks = useMemo(() => buildSide(mark, "ask").reverse(), [mark]);
-  const bids = useMemo(() => buildSide(mark, "bid"), [mark]);
-  const decimals = mark >= 10_000 ? 0 : mark >= 1_000 ? 1 : 2;
+  const asks = useMemo(() => (snapshot?.asks ?? []).slice(0, 7).reverse(), [snapshot]);
+  const bids = useMemo(() => (snapshot?.bids ?? []).slice(0, 7), [snapshot]);
+  const maxDepth = useMemo(() => Math.max(1, ...asks.map((level) => level.cumulativeSize), ...bids.map((level) => level.cumulativeSize)), [asks, bids]);
+  const mark = snapshot?.markPrice ?? 0;
+  const spread = snapshot?.spreadBps ?? 0;
 
   return (
-    <aside className="premium-depth-book" aria-label="Symbasis simulated testnet depth">
-      <div className="depth-tabs"><strong>ORDER BOOK</strong><span>TRADES</span><b>0.1 ▾</b></div>
+    <aside className="premium-depth-book" aria-label="Symbasis simulated testnet order flow">
+      <div className="depth-tabs"><strong>ORDER BOOK</strong><span>LIVE FILLS</span><b>{spread ? `${spread.toFixed(1)} BPS` : "SYNC"}</b></div>
       <div className="depth-head"><span>PRICE</span><span>SIZE</span><span>TOTAL</span></div>
+
       <div className="depth-side asks">
         {asks.map((level, index) => (
-          <div className="depth-row" key={`a-${index}`}>
-            <i style={{ width: `${level.depth}%` }} />
-            <span>{level.price.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}</span>
-            <span>{level.size.toFixed(3)}</span><span>{level.total.toFixed(3)}</span>
+          <div className="depth-row" key={`a-${level.price}-${index}`}>
+            <i style={{ width: `${Math.min(100, (level.cumulativeSize / maxDepth) * 100)}%` }} />
+            <span>{formatPrice(level.price)}</span><span>{level.size.toFixed(3)}</span><span>{level.cumulativeSize.toFixed(3)}</span>
           </div>
         ))}
       </div>
+
       <div className="depth-mark">
-        <strong>{mark ? mark.toLocaleString(undefined, { maximumFractionDigits: decimals }) : "—"}</strong>
-        <span>{symbol}</span><small>SPREAD 0.06%</small>
+        <strong className={snapshot?.change24hPct && snapshot.change24hPct < 0 ? "flow-sell" : "flow-buy"}>{mark ? formatPrice(mark) : "—"}</strong>
+        <span>{snapshot?.symbol ?? "PERP"}</span><small>SPREAD {spread ? `${spread.toFixed(2)} BPS` : "—"}</small>
       </div>
+
       <div className="depth-side bids">
         {bids.map((level, index) => (
-          <div className="depth-row" key={`b-${index}`}>
-            <i style={{ width: `${level.depth}%` }} />
-            <span>{level.price.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}</span>
-            <span>{level.size.toFixed(3)}</span><span>{level.total.toFixed(3)}</span>
+          <div className="depth-row" key={`b-${level.price}-${index}`}>
+            <i style={{ width: `${Math.min(100, (level.cumulativeSize / maxDepth) * 100)}%` }} />
+            <span>{formatPrice(level.price)}</span><span>{level.size.toFixed(3)}</span><span>{level.cumulativeSize.toFixed(3)}</span>
           </div>
         ))}
       </div>
-      <div className="depth-foot"><span>SYMBASIS MM</span><span>SIMULATED TESTNET DEPTH</span></div>
+
+      <div className="tape-head"><span>TIME</span><span>PRICE</span><span>SIZE</span><span>SIDE</span></div>
+      <div className="live-fill-tape">
+        {fills.slice(0, 7).map((trade) => (
+          <div className={`fill-row ${trade.side === "BUY" ? "is-buy" : "is-sell"}`} key={trade.id}>
+            <span>{new Date(trade.timestamp).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+            <strong>{formatPrice(trade.price)}</strong>
+            <span>{trade.size.toFixed(3)}</span>
+            <b>{trade.side}</b>
+          </div>
+        ))}
+        {!fills.length && <div className="fill-empty">WAITING FOR SYMBASIS MM FLOW…</div>}
+      </div>
+
+      <div className="depth-foot"><span>SYMBASIS MM</span><span>SIMULATED TESTNET FLOW · NOT EXTERNAL VOLUME</span></div>
     </aside>
   );
 }
