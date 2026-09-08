@@ -1,0 +1,12 @@
+.sym-trade-route > main > .topbar { display: none; }
+.sym-trade-route > main { min-height: calc(100vh - 64px); }
+.sym-trade-route > main .ticker { background: #090909; }
+.sym-trade-route > main footer { position: relative; }
+
+.sym-mm-route > main > header { display: none; }
+.sym-mm-route > main { min-height: calc(100vh - 64px) !important; }
+
+@media (max-width: 720px) {
+  .sym-trade-route > main { min-height: calc(100vh - 58px); }
+  .sym-mm-route > main { min-height: calc(100vh - 58px) !important; }
+}
