@@ -1,0 +1,36 @@
+/* Persistent client-side LIMIT/TRIGGER intent controls for the testnet terminal. */
+.order-intent-controls { margin:14px -18px -16px; padding:14px 18px 16px; border-top:1px solid #282b30; background:#0a0b0e; font-family:var(--sym-mono); }
+.order-mode-tabs { display:grid; grid-template-columns:repeat(3,1fr); height:34px; border:1px solid #2b2e34; }
+.order-mode-tabs button { border:0; border-right:1px solid #2b2e34; background:#0d0f12; color:#666b72; cursor:pointer; font:800 8px/1 var(--sym-mono); letter-spacing:.05em; }
+.order-mode-tabs button:last-child { border-right:0; }
+.order-mode-tabs button.is-active { color:#f2f2ef; background:#17191d; box-shadow:inset 0 -1px 0 #e8e8e4; }
+.quick-size-row { display:grid; grid-template-columns:1fr repeat(4,46px); align-items:center; gap:5px; margin-top:10px; }
+.quick-size-row span { color:#61666d; font:800 7px/1 var(--sym-mono); letter-spacing:.07em; }
+.quick-size-row button { height:28px; border:1px solid #292c31; background:#101216; color:#858a91; cursor:pointer; font:800 8px/1 var(--sym-mono); }
+.quick-size-row button:hover { border-color:#555a62; color:#e1e2de; }
+.intent-builder { margin-top:12px; padding-top:12px; border-top:1px solid #202328; }
+.intent-builder label { margin:0 0 7px !important; }
+.intent-price-row { display:grid; grid-template-columns:1fr 54px; height:40px; border:1px solid #30333a; background:#090a0c; }
+.intent-price-row input { min-width:0; border:0; outline:0; padding:0 10px; background:transparent; color:#ecece8; font:800 13px/1 var(--sym-mono); }
+.intent-price-row button { border:0; border-left:1px solid #30333a; background:#101216; color:#777c83; cursor:pointer; font:800 8px/1 var(--sym-mono); }
+.arm-intent { width:100%; height:36px; margin-top:8px; border:1px solid #3a3e45; background:#15171b; color:#d5d6d2; cursor:pointer; font:900 8px/1 var(--sym-mono); letter-spacing:.06em; }
+.intent-builder p { margin:8px 0 0; color:#4f545a; font:700 6.5px/1.35 var(--sym-mono); letter-spacing:.04em; }
+.armed-intent { margin-top:12px; display:grid; grid-template-columns:repeat(4,1fr); border:1px solid #30333a; background:#0d0f12; }
+.armed-intent > div:not(.intent-actions) { min-height:48px; padding:9px; border-right:1px solid #26292e; }
+.armed-intent > div:nth-child(4) { border-right:0; }
+.armed-intent span,.armed-intent strong { display:block; }
+.armed-intent span { color:#5b6067; font:700 6.5px/1 var(--sym-mono); letter-spacing:.06em; }
+.armed-intent strong { margin-top:7px; color:#c9cbc7; font:800 8px/1 var(--sym-mono); }
+.armed-intent.is-triggered { border-color:#3d684d; box-shadow:inset 0 0 0 1px rgba(92,223,140,.08); }
+.armed-intent.is-triggered > div:nth-child(4) strong { color:#62df91; }
+.intent-actions { grid-column:1/-1; display:grid; grid-template-columns:1fr 2fr; gap:6px; padding:7px; border-top:1px solid #26292e; }
+.intent-actions button { height:32px; border:1px solid #30333a; background:#111318; color:#888d94; cursor:pointer; font:800 7px/1 var(--sym-mono); }
+.intent-actions .execute-trigger { background:#e7e7e3; color:#0b0c0f; border-color:#e7e7e3; }
+.intent-actions .execute-trigger:disabled { opacity:.3; cursor:not-allowed; }
+.intent-alt-mode > .primary.long-btn,.intent-alt-mode > .primary.short-btn { display:none; }
+
+@media (max-width:720px) {
+  .armed-intent { grid-template-columns:1fr 1fr; }
+  .armed-intent > div { border-bottom:1px solid #26292e; }
+  .quick-size-row { grid-template-columns:1fr repeat(4,42px); }
+}
