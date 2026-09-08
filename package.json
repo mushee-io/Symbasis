@@ -5,6 +5,7 @@
   "description": "Private AI perpetual exchange on Horizen",
   "scripts": {
     "compile": "hardhat compile",
+    "typecheck": "tsc --noEmit",
     "test": "hardhat test",
     "test:security": "hardhat test test/SymbasisSecurity.ts",
     "deploy:testnet": "hardhat run scripts/deploy.ts --network horizen_testnet",
