@@ -2,13 +2,14 @@
 pragma solidity ^0.8.28;
 
 import {IERC20Minimal} from "./interfaces/IERC20Minimal.sol";
+import {TwoStepOwnable} from "./utils/TwoStepOwnable.sol";
 
 /// @notice Collateral accounting vault for the Symbasis testnet perp engine.
 ///         Balances are expected to use 6-decimal USDC-style collateral.
-contract SymbasisVault {
+contract SymbasisVault is TwoStepOwnable {
     IERC20Minimal public immutable collateralToken;
-    address public owner;
     address public engine;
+    bool public engineLocked;
     bool public paused;
     uint256 public liquidityBalance;
     uint256 public badDebt;
@@ -19,6 +20,7 @@ contract SymbasisVault {
     uint256 private _locked = 1;
 
     event EngineUpdated(address indexed engine);
+    event EngineLocked(address indexed engine);
     event PauseUpdated(bool paused);
     event CollateralDeposited(address indexed trader, uint256 amount);
     event CollateralWithdrawn(address indexed trader, uint256 amount);
@@ -28,11 +30,6 @@ contract SymbasisVault {
     event LiquiditySeeded(address indexed provider, uint256 amount);
     event LiquidityWithdrawn(address indexed recipient, uint256 amount);
     event BadDebtRecorded(address indexed trader, uint256 amount);
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "NOT_OWNER");
-        _;
-    }
 
     modifier onlyEngine() {
         require(msg.sender == engine, "NOT_ENGINE");
@@ -54,23 +51,26 @@ contract SymbasisVault {
     constructor(address token) {
         require(token != address(0), "ZERO_TOKEN");
         collateralToken = IERC20Minimal(token);
-        owner = msg.sender;
     }
 
     function setEngine(address nextEngine) external onlyOwner {
+        require(!engineLocked, "ENGINE_LOCKED");
         require(nextEngine != address(0), "ZERO_ENGINE");
         engine = nextEngine;
         emit EngineUpdated(nextEngine);
     }
 
+    /// @notice Permanently fixes the engine address for this vault deployment.
+    function lockEngine() external onlyOwner {
+        require(engine != address(0), "ENGINE_NOT_SET");
+        require(!engineLocked, "ENGINE_LOCKED");
+        engineLocked = true;
+        emit EngineLocked(engine);
+    }
+
     function setPaused(bool value) external onlyOwner {
         paused = value;
         emit PauseUpdated(value);
-    }
-
-    function transferOwnership(address nextOwner) external onlyOwner {
-        require(nextOwner != address(0), "ZERO_ADDRESS");
-        owner = nextOwner;
     }
 
     function availableCollateral(address trader) public view returns (uint256) {
@@ -84,7 +84,8 @@ contract SymbasisVault {
         emit CollateralDeposited(msg.sender, amount);
     }
 
-    function withdraw(uint256 amount) external nonReentrant whenNotPaused {
+    /// @notice Free collateral remains withdrawable during an emergency pause.
+    function withdraw(uint256 amount) external nonReentrant {
         require(amount > 0, "ZERO_WITHDRAWAL");
         require(availableCollateral(msg.sender) >= amount, "MARGIN_LOCKED");
         collateral[msg.sender] -= amount;
@@ -99,7 +100,9 @@ contract SymbasisVault {
         emit LiquiditySeeded(msg.sender, amount);
     }
 
+    /// @notice Protocol liquidity may only be withdrawn before the engine is permanently locked.
     function withdrawLiquidity(address recipient, uint256 amount) external nonReentrant onlyOwner {
+        require(!engineLocked, "LIQUIDITY_WITHDRAWALS_LOCKED");
         require(recipient != address(0), "ZERO_ADDRESS");
         require(amount <= liquidityBalance, "INSUFFICIENT_LIQUIDITY");
         liquidityBalance -= amount;
