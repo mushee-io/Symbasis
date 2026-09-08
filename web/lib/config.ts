@@ -24,14 +24,12 @@ export const MARKETS = {
     key: "ETH",
     symbol: "ETH-PERP",
     asset: "ETHUSD",
-    marketId: "0x9d74e16043dd01ad337639283f8dfe7dbfc825293709612625c55745b2b63aab",
     feedId: "0x59102b37de83bdda9f38ac8254e596f0d9ac61d2035c07936675e87342817160"
   },
   BTC: {
     key: "BTC",
     symbol: "BTC-PERP",
     asset: "BTCUSD",
-    marketId: "0x19dd6a08d97f659e9cc59593e34278767318a83fbaa35fcbdb49eb748e08ee52",
     feedId: "0x7404e3d104ea7841c3d9e6fd20adfe99b4ad586bc08d8f3bd3afef894cf184de"
   }
 } as const;
