@@ -10,7 +10,7 @@
     "deploy:testnet": "hardhat run scripts/deploy.ts --network horizen_testnet",
     "check:testnet": "hardhat run scripts/check-network.ts --network horizen_testnet",
     "verify:testnet": "hardhat run scripts/verify-deployment.ts --network horizen_testnet",
-    "smoke:testnet": "hardhat run scripts/smoke-testnet.ts --network horizzen_testnet"
+    "smoke:testnet": "hardhat run scripts/smoke-testnet.ts --network horizen_testnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
