@@ -3,21 +3,16 @@ pragma solidity ^0.8.28;
 
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 import {IStork} from "./interfaces/IStork.sol";
+import {TwoStepOwnable} from "./utils/TwoStepOwnable.sol";
 
 /// @notice Horizen/Stork pull-oracle adapter. Prices are 18-decimal USD values.
-contract StorkOracleAdapter is IPriceOracle {
+contract StorkOracleAdapter is IPriceOracle, TwoStepOwnable {
     IStork public immutable stork;
-    address public owner;
     uint256 public maxAge = 120 seconds;
     uint256 private _locked = 1;
 
     event MaxAgeUpdated(uint256 maxAge);
     event PricesUpdated(address indexed updater, uint256 updates, uint256 feePaid);
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "NOT_OWNER");
-        _;
-    }
 
     modifier nonReentrant() {
         require(_locked == 1, "REENTRANCY");
@@ -29,7 +24,6 @@ contract StorkOracleAdapter is IPriceOracle {
     constructor(address storkAddress) {
         require(storkAddress != address(0), "ZERO_STORK");
         stork = IStork(storkAddress);
-        owner = msg.sender;
     }
 
     function setMaxAge(uint256 seconds_) external onlyOwner {
@@ -41,13 +35,14 @@ contract StorkOracleAdapter is IPriceOracle {
     function getUpdateFee(
         IStork.TemporalNumericValueInput[] calldata updateData
     ) external view returns (uint256) {
+        require(updateData.length > 0, "NO_UPDATES");
         return stork.getUpdateFeeV1(updateData);
     }
 
     function updatePrices(
         IStork.TemporalNumericValueInput[] calldata updateData
     ) external payable nonReentrant {
-        require(updateData.length > 0, "NO_UPDATES");
+        require(updateData.length > 0 && updateData.length <= 16, "BAD_UPDATE_COUNT");
         uint256 fee = stork.getUpdateFeeV1(updateData);
         require(msg.value >= fee, "INSUFFICIENT_UPDATE_FEE");
         stork.updateTemporalNumericValuesV1{value: fee}(updateData);
@@ -61,6 +56,7 @@ contract StorkOracleAdapter is IPriceOracle {
     }
 
     function latestPrice(bytes32 feedId) external view override returns (uint256 price, uint64 timestampNs) {
+        require(feedId != bytes32(0), "ZERO_FEED");
         IStork.TemporalNumericValue memory value = stork.getTemporalNumericValueV1(feedId);
         require(value.quantizedValue > 0, "INVALID_PRICE");
         require(value.timestampNs > 0, "MISSING_TIMESTAMP");
@@ -70,10 +66,5 @@ contract StorkOracleAdapter is IPriceOracle {
         require(block.timestamp <= timestampSeconds + maxAge, "STALE_PRICE");
 
         return (uint256(uint192(value.quantizedValue)), value.timestampNs);
-    }
-
-    function transferOwnership(address nextOwner) external onlyOwner {
-        require(nextOwner != address(0), "ZERO_ADDRESS");
-        owner = nextOwner;
     }
 }
