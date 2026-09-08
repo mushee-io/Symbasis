@@ -1,0 +1,19 @@
+{
+  "name": "symbasis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private AI perpetual exchange on Horizen",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:fork": "hardhat test --network hardhat",
+    "deploy:testnet": "hardhat run scripts/deploy.ts --network horizen_testnet",
+    "check:testnet": "hardhat run scripts/check-network.ts --network horizen_testnet"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "dotenv": "^17.2.2",
+    "hardhat": "^2.26.3",
+    "typescript": "^5.9.2"
+  }
+}
