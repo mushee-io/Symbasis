@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {TwoStepOwnable} from "./utils/TwoStepOwnable.sol";
+
 /// @notice Testnet-only USDC-style collateral. This token has an owner mint and a public faucet.
 ///         Never use this contract as production collateral.
-contract MockUSDC {
+contract MockUSDC is TwoStepOwnable {
     string public constant name = "Symbasis Test USDC";
     string public constant symbol = "sUSDC";
     uint8 public constant decimals = 6;
 
     uint256 public totalSupply;
-    address public owner;
     uint256 public faucetAmount = 10_000 * 1e6;
     uint256 public faucetCooldown = 1 days;
 
@@ -20,15 +21,7 @@ contract MockUSDC {
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
     event FaucetClaimed(address indexed account, uint256 amount);
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "NOT_OWNER");
-        _;
-    }
-
-    constructor() {
-        owner = msg.sender;
-    }
+    event FaucetConfigUpdated(uint256 amount, uint256 cooldown);
 
     function transfer(address to, uint256 amount) external returns (bool) {
         _transfer(msg.sender, to, amount);
@@ -36,6 +29,7 @@ contract MockUSDC {
     }
 
     function approve(address spender, uint256 amount) external returns (bool) {
+        require(spender != address(0), "ZERO_SPENDER");
         allowance[msg.sender][spender] = amount;
         emit Approval(msg.sender, spender, amount);
         return true;
@@ -60,19 +54,16 @@ contract MockUSDC {
     }
 
     function mint(address to, uint256 amount) external onlyOwner {
+        require(amount > 0, "ZERO_AMOUNT");
         _mint(to, amount);
     }
 
     function setFaucet(uint256 amount, uint256 cooldown) external onlyOwner {
-        require(amount > 0, "ZERO_AMOUNT");
-        require(cooldown >= 1 hours, "COOLDOWN_TOO_SHORT");
+        require(amount > 0 && amount <= 100_000 * 1e6, "BAD_FAUCET_AMOUNT");
+        require(cooldown >= 1 hours && cooldown <= 30 days, "BAD_COOLDOWN");
         faucetAmount = amount;
         faucetCooldown = cooldown;
-    }
-
-    function transferOwnership(address nextOwner) external onlyOwner {
-        require(nextOwner != address(0), "ZERO_ADDRESS");
-        owner = nextOwner;
+        emit FaucetConfigUpdated(amount, cooldown);
     }
 
     function _mint(address to, uint256 amount) internal {
