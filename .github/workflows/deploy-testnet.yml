@@ -2,6 +2,15 @@ name: Deploy Horizen Testnet
 
 on:
   workflow_dispatch:
+    inputs:
+      oracle_mode:
+        description: Oracle mode for this deployment
+        required: true
+        default: demo
+        type: choice
+        options:
+          - demo
+          - stork
 
 permissions:
   contents: read
@@ -17,6 +26,7 @@ jobs:
     environment: horizen-testnet
     env:
       HORIZEN_TESTNET_RPC_URL: https://horizen-testnet.rpc.caldera.xyz/http
+      ORACLE_MODE: ${{ inputs.oracle_mode }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,13 +37,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Typecheck deployment tooling
+        run: npm run typecheck
+
       - name: Compile contracts
         run: npm run compile
 
       - name: Run full contract test suite
         run: npm test
 
-      - name: Verify live Horizen testnet and Stork
+      - name: Verify live Horizen testnet
         run: npm run check:testnet
 
       - name: Validate deployer credential is configured
@@ -47,6 +60,18 @@ jobs:
             exit 1
           fi
 
+      - name: Validate Stork credential when Stork mode is selected
+        if: ${{ inputs.oracle_mode == 'stork' }}
+        shell: bash
+        env:
+          STORK_API_KEY: ${{ secrets.STORK_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STORK_API_KEY:-}" ]; then
+            echo "STORK_API_KEY is required only when oracle_mode=stork. Use demo mode to deploy without it."
+            exit 1
+          fi
+
       - name: Deploy and finalize Symbasis stack
         run: npm run deploy:testnet
         env:
@@ -55,26 +80,19 @@ jobs:
       - name: Verify deployed contracts on Horizen
         run: npm run verify:testnet
 
-      - name: Run real ETH-PERP smoke trade
-        shell: bash
+      - name: Run ETH-PERP end-to-end smoke trade
+        run: npm run smoke:testnet
         env:
           PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY }}
           STORK_API_KEY: ${{ secrets.STORK_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${STORK_API_KEY:-}" ]; then
-            echo "STORK_API_KEY is not configured; deployment is verified but real trade smoke test cannot run."
-            exit 0
-          fi
-          npm run smoke:testnet
 
       - name: Upload verified deployment artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: symbasis-horizen-testnet-deployment
+          name: symbasis-horizen-testnet-deployment-${{ inputs.oracle_mode }}
           path: |
             deployments/horizen-testnet.json
             deployments/horizen-testnet.web.env
             deployments/horizen-testnet-smoke.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
