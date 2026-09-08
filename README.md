@@ -2,9 +2,20 @@
 
 **Private AI Perpetual Exchange on Horizen**
 
-Symbasis is a testnet-first perpetual trading protocol with AI-assisted risk intelligence and a confidential-intent architecture. The public trading core runs on Horizen testnet. Sensitive strategy/agent mandates are committed onchain as hashes and are being integrated with Horizen VELA in the local environment VELA currently supports.
+Symbasis is a testnet-first perpetual trading protocol with AI-assisted risk intelligence, privacy-oriented strategy commitments and an autonomous testnet market-making layer. The public trading core is deployed on Horizen testnet.
 
-> Testnet software only. Do not use real funds.
+> Testnet software only. Do not use real funds. Simulated market-maker activity is not real liquidity or volume.
+
+## Reviewer links
+
+- Live app: https://web-vert-eight-44.vercel.app
+- Trade terminal: https://web-vert-eight-44.vercel.app/trade
+- Architecture: https://web-vert-eight-44.vercel.app/architecture
+- Live readiness: https://web-vert-eight-44.vercel.app/api/grant-readiness
+- Grant brief: [`GRANT_SUBMISSION.md`](./GRANT_SUBMISSION.md)
+- Demo script: [`docs/DEMO_SCRIPT.md`](./docs/DEMO_SCRIPT.md)
+- QA checklist: [`docs/QA_CHECKLIST.md`](./docs/QA_CHECKLIST.md)
+- Public deployment manifest: [`deployments/horizen-testnet.public.json`](./deployments/horizen-testnet.public.json)
 
 ## Horizen testnet
 
@@ -15,25 +26,38 @@ Symbasis is a testnet-first perpetual trading protocol with AI-assisted risk int
 - Gas token: ETH
 - Stork contract: `0xacC0a0cF13571d30B4b8637996F5D6D774d4fd62`
 
+## Deployed contracts
+
+| Component | Address |
+| --- | --- |
+| sUSDC | `0x6bb04e5B146c2e9fE1FC80A4936596d6D0627F95` |
+| Vault | `0x7762591e96429108d961f5740F99d863E8AD354A` |
+| MarketRegistry | `0xaaEe1F794dFF5758543083a515741825c7deE6AE` |
+| DemoPriceOracle | `0xFEC5eB2307f974aE08cd7f7A6C57080ABe707275` |
+| PerpEngine | `0x296234337BC3589C563De889D9613E3D0D979D1a` |
+| ConfidentialIntentRegistry | `0x447a23e847CFFEa73257F5a936d96E81bFe0f4D2` |
+
+The successful deployment workflow completed a full smoke test and produced `status: PASS` for:
+
+`deposit -> oracle update -> open ETH-PERP -> price move -> PnL -> close -> withdraw -> private intent`
+
 ## What is implemented
 
 ### Trading contracts
 
 - `MockUSDC.sol` — 6-decimal test collateral with a rate-limited public faucet
 - `SymbasisVault.sol` — deposits, withdrawals, reserved margin, protocol liquidity and PnL settlement
-- `MarketRegistry.sol` — ETH-PERP / BTC-PERP market configuration, leverage and OI limits
-- `DemoPriceOracle.sol` — testnet-only, Stork-compatible update surface with configured feeds and bounded public price moves
-- `StorkOracleAdapter.sol` — Stork pull-oracle updates, runtime update fee, freshness checks and invalid-price rejection
-- `PerpEngine.sol` — long/short positions, isolated margin, leverage, slippage guards, partial/full closes, PnL, funding framework, liquidation, position/OI caps
-- `ConfidentialIntentRegistry.sol` — stores private-strategy commitments and attested result hashes without publishing raw mandates
+- `MarketRegistry.sol` — ETH-PERP / BTC-PERP configuration, leverage and OI limits
+- `DemoPriceOracle.sol` — testnet-only price path with configured feeds and bounded public moves
+- `StorkOracleAdapter.sol` — signed Stork pull-oracle update path, update fee and freshness validation
+- `PerpEngine.sol` — long/short, isolated margin, leverage, slippage guards, partial/full closes, PnL, funding framework and liquidation
+- `ConfidentialIntentRegistry.sol` — stores strategy commitments and attested result hashes without publishing raw mandate text
 
 ### Markets
 
-Deployment creates:
-
 - `ETH-PERP`
 - `BTC-PERP`
-- max leverage: 10x
+- maximum leverage: 10x
 - maintenance margin: 5%
 - testnet position and open-interest caps
 
@@ -43,69 +67,57 @@ Both oracle modes use the same ETHUSD/BTCUSD feed identifiers, so switching orac
 
 The Next.js app in `web/` includes:
 
-- MetaMask / injected-wallet connection
-- automatic Horizen testnet switch/add
-- Horizen faucet link and gas balance
+- all-caps institutional navigation: TRADE / MARKETS / PORTFOLIO / LIQUIDITY / MM / REWARDS / MORE
+- injected-wallet connection and automatic Horizen network switch/add
 - test sUSDC faucet, approval, deposit and withdrawal
-- ETH/BTC market selector
-- live-session oracle price trace
-- long / short order ticket
-- leverage slider and position sizing
-- 0.5% market-order slippage protection
+- ETH/BTC perpetual market selection
+- moving OHLC candlesticks with green/red bodies and volume bars
+- 1M / 5M / 15M / 30M / 1H / 4H / 1D chart controls and crosshair
+- dynamic bid/ask depth and red/green BUY/SELL fill tape from Symbasis MM
+- clear simulated-testnet disclosure
+- long/short market execution, leverage and isolated-margin sizing
 - current position, entry, margin, liquidation price and unrealized PnL
 - full close / settlement flow
-- session transaction history with explorer links
-- advisory pre-trade risk scoring
-- private mandate commitment flow
+- persistent onchain PerpEngine activity with explorer links
+- explainable advisory pre-trade risk scoring
+- raw private mandate kept in-browser with onchain hash commitment
+- client-side LIMIT/TRIGGER testnet intents that require explicit wallet execution when triggered
+
+## Symbasis MM / market simulation
+
+`web/lib/mm/engine.ts` produces deterministic ETH/BTC testnet market structure on a bounded 1.25-second quote cycle. It generates market regimes, mark/reference/index values, spreads, depth and BUY/SELL fills. The terminal converts that stream into live-style candles, book movement and fill tape.
+
+This layer is **simulation**. It must not be described as real external liquidity, real volume or real counterparties. The configured oracle mark remains a separate settlement reference.
 
 ## AI risk layer
 
-`web/app/api/risk/route.ts` provides an explainable V1 risk baseline using leverage, collateral concentration, volatility and funding inputs. It returns risk score/level, recommended leverage, suggested margin/position size, an approximate liquidation-distance warning, and human-readable risk flags.
+`web/app/api/risk/route.ts` provides an explainable risk baseline using leverage, collateral concentration, volatility and funding inputs. It returns a score/level, recommended leverage, suggested margin/position size and risk warnings.
 
-V1 is intentionally advisory. It cannot sign transactions or control wallet funds.
+The risk layer is advisory. It cannot sign transactions or control wallet funds.
 
 ## Oracle modes
 
-Symbasis now has two explicit testnet deployment modes.
+### `demo` — current deployed mode
 
-### `demo` — default / no Stork API key required
+`DemoPriceOracle` provides the controlled Horizen testnet price path. It uses the same update-facing architecture needed by the terminal while avoiding a dependency on signed Stork API access for the grant demo.
 
-`DemoPriceOracle` is deployed on Horizen testnet and seeded with test ETH/BTC prices. It intentionally exposes a Stork-compatible `getUpdateFee` / `updatePrices` interface so the frontend uses the same transaction path in both modes.
+Safety constraints include configured feeds, stale/non-positive price rejection and bounded public price moves.
 
-Safety constraints:
+### `stork` — signed oracle path
 
-- testnet-only contract
-- only owner can configure feeds
-- unknown feeds rejected
-- public price updates limited to ±5% per transaction
-- stale prices rejected
-- no oracle fee
-- signature fields are ignored only in demo mode
-
-This proves the complete protocol flow without presenting the data as live market data.
-
-### `stork` — signed oracle mode
-
-`StorkOracleAdapter` fetches and verifies the Stork contract's signed pull-oracle updates. The server-side API key is required only for this mode:
-
-```env
-STORK_API_KEY=...
-```
-
-Never expose the Stork API key as a `NEXT_PUBLIC_` variable.
+`StorkOracleAdapter` supports Stork pull updates and runtime fees. Stork mode requires a server-only `STORK_API_KEY` and a Stork-mode adapter deployment address. Never expose the API key as a `NEXT_PUBLIC_` variable.
 
 ## Confidential execution / VELA
 
-Horizen currently documents VELA shared testnet/mainnet deployment as unavailable; local Docker development uses an emulated TEE. Symbasis therefore does not claim that the live Horizen testnet perp state is VELA-private today.
+Symbasis does **not** claim that current public Horizen testnet positions are confidential.
 
-Current privacy path:
+Current boundary:
 
-1. Raw strategy/agent mandate remains offchain.
+1. Raw strategy/agent mandate remains in the browser/offchain.
 2. Browser computes a commitment.
-3. `ConfidentialIntentRegistry` stores only the commitment.
-4. A VELA guest evaluates the mandate privately in the supported local environment.
-5. Only approved result + attestation hashes should be attached onchain.
-6. When shared VELA testnet deployment becomes available, the attestor can be replaced with the real VELA execution flow.
+3. `ConfidentialIntentRegistry` stores only that commitment.
+4. VELA integration is prepared for the supported local environment.
+5. Shared VELA testnet execution can replace the attestor path when Horizen makes that environment available.
 
 See [`vela/README.md`](./vela/README.md).
 
@@ -120,15 +132,11 @@ npm test
 npm run check:testnet
 ```
 
-The suite covers collateral precision, margin reservation, long/short PnL, partial closes, funding, liquidation, slippage, emergency exits, authorization, stale Stork data, demo-oracle bounds, isolated-loss invariants, and confidential-intent permissions.
-
 ## Deploy to Horizen testnet
 
-Fund a fresh deployment wallet with Horizen testnet ETH and set its key securely as `PRIVATE_KEY` locally or `HORIZEN_DEPLOYER_PRIVATE_KEY` in the GitHub `horizen-testnet` environment.
+Fund a fresh testnet deployment wallet and set its key securely as `PRIVATE_KEY` locally or `HORIZEN_DEPLOYER_PRIVATE_KEY` in GitHub Actions. Never paste private keys into issues, commits, frontend variables or chat.
 
-Do not paste private keys into issues, commits, chat, or frontend environment variables.
-
-### Deploy now without Stork
+Demo mode:
 
 ```bash
 ORACLE_MODE=demo npm run deploy:testnet
@@ -136,7 +144,7 @@ ORACLE_MODE=demo npm run verify:testnet
 ORACLE_MODE=demo npm run smoke:testnet
 ```
 
-### Deploy with Stork later
+Stork mode:
 
 ```bash
 ORACLE_MODE=stork STORK_API_KEY=... npm run deploy:testnet
@@ -144,105 +152,37 @@ ORACLE_MODE=stork STORK_API_KEY=... npm run verify:testnet
 ORACLE_MODE=stork STORK_API_KEY=... npm run smoke:testnet
 ```
 
-The GitHub **Deploy Horizen Testnet** workflow also exposes `demo` / `stork` as a dropdown. `demo` is the default and requires only the funded deployer secret.
+## Web configuration
 
-A successful deployment writes:
+The committed public testnet addresses are the safe default for demo mode, so a fresh Vercel build points at the deployed Horizen contracts even if public address env variables are omitted. Environment variables can override those addresses for future deployments.
 
-```text
-deployments/horizen-testnet.json
-deployments/horizen-testnet.web.env
-deployments/horizen-testnet-smoke.json
-```
+`NEXT_PUBLIC_ORACLE_MODE=demo` remains the default. Stork mode intentionally requires explicit deployment-specific oracle configuration.
 
-The smoke artifact must contain:
-
-```json
-{ "status": "PASS" }
-```
-
-The smoke test performs a real sequence against the deployed Horizen contracts:
-
-```text
-mint/claim sUSDC
-→ approve vault
-→ deposit collateral
-→ update oracle
-→ open ETH-PERP long
-→ confirm position exists
-→ update price again
-→ verify PnL
-→ close position
-→ confirm margin released
-→ withdraw collateral
-→ commit private strategy hash
-→ PASS
-```
-
-## Web environment
-
-The deployment script generates `deployments/horizen-testnet.web.env`. Use those values in Vercel or `web/.env.local`.
-
-Important variables include:
-
-```env
-NEXT_PUBLIC_ORACLE_MODE=demo
-NEXT_PUBLIC_MOCK_USDC_ADDRESS=0x...
-NEXT_PUBLIC_VAULT_ADDRESS=0x...
-NEXT_PUBLIC_MARKET_REGISTRY_ADDRESS=0x...
-NEXT_PUBLIC_ORACLE_ADDRESS=0x...
-NEXT_PUBLIC_STORK_ADAPTER_ADDRESS=0x...
-NEXT_PUBLIC_PERP_ENGINE_ADDRESS=0x...
-NEXT_PUBLIC_CONFIDENTIAL_INTENT_REGISTRY_ADDRESS=0x...
-```
-
-`NEXT_PUBLIC_STORK_ADAPTER_ADDRESS` is retained as a backwards-compatible frontend alias and points to the selected oracle contract.
-
-## Run the trading terminal
+Run locally:
 
 ```bash
 cd web
 npm install
-cp .env.example .env.local
 npm run dev
 ```
 
-## End-to-end demo definition
+## CI / grant readiness
 
-A successful Symbasis testnet demo is:
+`.github/workflows/ci.yml` type-checks deployment tooling, compiles contracts, runs the full test suite, audits production web dependencies, type-checks/builds the frontend, and checks live Horizen testnet connectivity.
 
-```text
-Connect wallet
-→ switch to Horizen testnet
-→ get test ETH
-→ claim sUSDC
-→ approve vault
-→ deposit collateral
-→ refresh selected oracle
-→ run Symbasis risk analysis
-→ open ETH/BTC long or short
-→ observe margin + PnL + liquidation price
-→ refresh oracle
-→ reduce/close position
-→ settle PnL
-→ withdraw free collateral
-→ optionally commit a private agent mandate
-```
+The public `/api/grant-readiness` endpoint additionally checks chain ID and deployed contract bytecode from the running web application.
 
-## CI
+## Security notes / limitations
 
-`.github/workflows/ci.yml` type-checks deployment tooling, compiles contracts, runs the full test suite, audits production web dependencies, type-checks/builds the frontend, and checks live Horizen testnet connectivity on every push / pull request.
-
-## Security notes
-
-- testnet only
-- private keys and API secrets must never be committed
-- demo oracle values are explicitly simulated and must not be represented as live market data
+- testnet only; no professional smart-contract audit yet
+- demo/MM values are simulated and clearly disclosed
 - stale/non-positive oracle prices are rejected
 - market-order slippage is bounded
 - leverage and open interest are capped
 - margin is reserved at the vault level
 - isolated position losses are capped at posted position margin
 - emergency pause blocks new risk while preserving exits/liquidations
-- privileged ownership transfers use two-step acceptance
-- the vault engine is permanently locked after deployment finalization
-- this repository has not received a professional smart-contract audit
+- privileged ownership transfers use two-step acceptance where implemented
+- advanced LIMIT/TRIGGER intents are browser-side testnet intents, not keeper-backed native orders
+- funding accounting is MVP-grade and should move to cumulative funding indices before production
+- shared VELA testnet privacy is not currently available
