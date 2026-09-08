@@ -28,9 +28,9 @@ jobs:
       HORIZEN_TESTNET_RPC_URL: https://horizen-testnet.rpc.caldera.xyz/http
       ORACLE_MODE: ${{ inputs.oracle_mode }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -52,13 +52,16 @@ jobs:
       - name: Validate deployer credential is configured
         shell: bash
         env:
-          PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY }}
+          PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY || secrets.PRIVATE_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${PRIVATE_KEY:-}" ]; then
-            echo "HORIZEN_DEPLOYER_PRIVATE_KEY is not configured in the horizen-testnet environment."
+            echo "No deployer private-key secret is available to this job."
+            echo "Add an Actions secret named HORIZEN_DEPLOYER_PRIVATE_KEY (preferred) or PRIVATE_KEY."
+            echo "If using an Environment secret, add it under the environment named exactly: horizen-testnet."
             exit 1
           fi
+          echo "Deployer credential detected."
 
       - name: Validate Stork credential when Stork mode is selected
         if: ${{ inputs.oracle_mode == 'stork' }}
@@ -75,7 +78,7 @@ jobs:
       - name: Deploy and finalize Symbasis stack
         run: npm run deploy:testnet
         env:
-          PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY }}
+          PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY || secrets.PRIVATE_KEY }}
 
       - name: Verify deployed contracts on Horizen
         run: npm run verify:testnet
@@ -83,7 +86,7 @@ jobs:
       - name: Run ETH-PERP end-to-end smoke trade
         run: npm run smoke:testnet
         env:
-          PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY }}
+          PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY || secrets.PRIVATE_KEY }}
           STORK_API_KEY: ${{ secrets.STORK_API_KEY }}
 
       - name: Upload verified deployment artifacts
