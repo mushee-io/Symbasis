@@ -1,0 +1,41 @@
+{
+  "project": "Symbasis",
+  "network": "Horizen Testnet",
+  "chainId": 2651420,
+  "rpc": "https://horizen-testnet.rpc.caldera.xyz/http",
+  "explorer": "https://explorer-testnet.horizen.io",
+  "faucet": "https://hub-testnet.horizen.io/",
+  "deployedAt": "2026-09-08",
+  "oracleMode": "demo",
+  "smokeStatus": "PASS",
+  "contracts": {
+    "mockUSDC": "0x6bb04e5B146c2e9fE1FC80A4936596d6D0627F95",
+    "vault": "0x7762591e96429108d961f5740F99d863E8AD354A",
+    "marketRegistry": "0xaaEe1F794dFF5758543083a515741825c7deE6AE",
+    "demoPriceOracle": "0xFEC5eB2307f974aE08cd7f7A6C57080ABe707275",
+    "perpEngine": "0x296234337BC3589C563De889D9613E3D0D979D1a",
+    "confidentialIntentRegistry": "0x447a23e847CFFEa73257F5a936d96E81bFe0f4D2"
+  },
+  "stork": {
+    "horizenContract": "0xacC0a0cF13571d30B4b8637996F5D6D774d4fd62",
+    "ethUsdFeedId": "0x59102b37de83bdda9f38ac8254e596f0d9ac61d2035c07936675e87342817160",
+    "btcUsdFeedId": "0x7404e3d104ea7841c3d9e6fd20adfe99b4ad586bc08d8f3bd3afef894cf184de",
+    "status": "adapter-ready; signed API access can replace demo mode"
+  },
+  "privacy": {
+    "strategyCommitments": "onchain",
+    "rawMandates": "not submitted onchain by the web terminal",
+    "publicPositionState": "visible on Horizen testnet",
+    "velaSharedTestnet": "not currently available"
+  },
+  "marketData": {
+    "mm": "simulated testnet liquidity and trade flow",
+    "candles": "simulated testnet stream anchored to the configured oracle mark",
+    "disclosure": "not real liquidity, real volume, or real counterparties"
+  },
+  "verification": {
+    "source": "successful Deploy Symbasis Horizen — CURRENT GitHub Actions artifact",
+    "smokeFlow": "deposit -> oracle update -> open ETH-PERP -> price move -> PnL -> close -> withdraw -> private intent",
+    "note": "Transaction hashes are intentionally omitted from this public manifest; reviewers can inspect current contract activity on the Horizen explorer."
+  }
+}
