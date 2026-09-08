@@ -86,7 +86,6 @@ export default function LiveMarketSurface() {
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   const [market, setMarket] = useState<"ETH" | "BTC">("ETH");
   const [oracleAnchor, setOracleAnchor] = useState(0);
-  const [tickCount, setTickCount] = useState(0);
 
   useEffect(() => {
     const locate = () => {
@@ -135,13 +134,12 @@ export default function LiveMarketSurface() {
           last.low = Math.min(last.low, next.markPrice);
           last.volume = Math.max(last.volume * 0.82, tradeVolume * 8.5);
           updated[lastIndex] = last;
-          const shouldRoll = (next.sequence % 5) === 0 && tickCount > 0;
-          if (shouldRoll) {
-            const open = last.close;
+
+          if ((next.sequence % 5) === 0) {
             const nextCandle: Candle = {
-              open,
-              high: Math.max(open, next.markPrice),
-              low: Math.min(open, next.markPrice),
+              open: last.close,
+              high: last.close,
+              low: last.close,
               close: next.markPrice,
               volume: Math.max(8, tradeVolume * 5),
               timestamp: Date.now()
@@ -150,20 +148,18 @@ export default function LiveMarketSurface() {
           }
           return updated.slice(-CANDLE_COUNT);
         });
-        setTickCount((value) => value + 1);
       } catch {
-        // The terminal keeps its previous frame if the simulator endpoint is temporarily unavailable.
+        // Keep the previous market frame if the simulation endpoint is temporarily unavailable.
       }
     }
     void load();
     const timer = window.setInterval(() => void load(), 1_250);
     return () => { live = false; window.clearInterval(timer); };
-  }, [market, oracleAnchor, timeframe, tickCount]);
+  }, [market, oracleAnchor, timeframe]);
 
   useEffect(() => {
-    if (!snapshot?.markPrice) return;
-    setCandles(seededCandles(snapshot.markPrice, market, timeframe));
-    setTickCount(0);
+    const anchor = snapshot?.market === market ? snapshot.markPrice : oracleAnchor;
+    if (anchor > 0) setCandles(seededCandles(anchor, market, timeframe));
   }, [timeframe, market]);
 
   const geometry = useMemo(() => {
