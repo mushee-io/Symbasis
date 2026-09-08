@@ -6,7 +6,6 @@ const CONTRACT_ENV = [
   "NEXT_PUBLIC_MOCK_USDC_ADDRESS",
   "NEXT_PUBLIC_VAULT_ADDRESS",
   "NEXT_PUBLIC_MARKET_REGISTRY_ADDRESS",
-  "NEXT_PUBLIC_STORK_ADAPTER_ADDRESS",
   "NEXT_PUBLIC_PERP_ENGINE_ADDRESS",
   "NEXT_PUBLIC_CONFIDENTIAL_INTENT_REGISTRY_ADDRESS"
 ] as const;
@@ -33,8 +32,13 @@ async function rpc(method: string, params: unknown[] = []) {
 }
 
 export async function GET() {
+  const oracleMode = (process.env.NEXT_PUBLIC_ORACLE_MODE ?? process.env.ORACLE_MODE ?? "demo").toLowerCase();
+  const oracleAddress = process.env.NEXT_PUBLIC_ORACLE_ADDRESS ?? process.env.NEXT_PUBLIC_STORK_ADAPTER_ADDRESS ?? "";
   const addresses = Object.fromEntries(CONTRACT_ENV.map((name) => [name, process.env[name] ?? ""]));
-  const configured = CONTRACT_ENV.every((name) => validAddress(process.env[name]));
+  const coreConfigured = CONTRACT_ENV.every((name) => validAddress(process.env[name]));
+  const oracleConfigured = validAddress(oracleAddress);
+  const configured = coreConfigured && oracleConfigured;
+  const storkCredentialRequired = oracleMode === "stork";
   const storkConfigured = Boolean(process.env.STORK_API_KEY);
 
   let chainOk = false;
@@ -47,9 +51,8 @@ export async function GET() {
     latestBlock = Number.parseInt(String(blockHex), 16);
 
     if (configured && chainOk) {
-      const codes = await Promise.all(
-        CONTRACT_ENV.map((name) => rpc("eth_getCode", [addresses[name], "latest"]))
-      );
+      const contractAddresses = [...CONTRACT_ENV.map((name) => addresses[name]), oracleAddress];
+      const codes = await Promise.all(contractAddresses.map((address) => rpc("eth_getCode", [address, "latest"])));
       contractsOk = codes.every((code) => typeof code === "string" && code !== "0x");
     }
   } catch {
@@ -57,23 +60,24 @@ export async function GET() {
     contractsOk = false;
   }
 
-  const ready = configured && storkConfigured && chainOk && contractsOk;
+  const credentialOk = !storkCredentialRequired || storkConfigured;
+  const ready = configured && credentialOk && chainOk && contractsOk;
   return NextResponse.json(
     {
       service: "symbasis-web",
       environment: "horizen-testnet",
+      oracleMode,
       ready,
       checks: {
         contractsConfigured: configured,
+        oracleConfigured,
+        storkCredentialRequired,
         storkConfigured,
         chainReachable: chainOk,
         deployedBytecodePresent: contractsOk
       },
       latestBlock
     },
-    {
-      status: ready ? 200 : 503,
-      headers: { "Cache-Control": "no-store" }
-    }
+    { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store" } }
   );
 }
