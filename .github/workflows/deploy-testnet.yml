@@ -55,6 +55,19 @@ jobs:
       - name: Verify deployed contracts on Horizen
         run: npm run verify:testnet
 
+      - name: Run real ETH-PERP smoke trade
+        shell: bash
+        env:
+          PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY }}
+          STORK_API_KEY: ${{ secrets.STORK_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STORK_API_KEY:-}" ]; then
+            echo "STORK_API_KEY is not configured; deployment is verified but real trade smoke test cannot run."
+            exit 0
+          fi
+          npm run smoke:testnet
+
       - name: Upload verified deployment artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -62,5 +75,6 @@ jobs:
           path: |
             deployments/horizen-testnet.json
             deployments/horizen-testnet.web.env
-          if-no-files-found: error
+            deployments/horizen-testnet-smoke.json
+          if-no-files-found: warn
           retention-days: 30
