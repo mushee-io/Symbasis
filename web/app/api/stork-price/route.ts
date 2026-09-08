@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateMMSnapshot, MMMarketKey } from "@/lib/mm/engine";
 
 const STORK_API = "https://rest.jp.stork-oracle.network/v1/prices/latest";
 const ALLOWED_ASSETS = new Set(["ETHUSD", "BTCUSD"]);
@@ -11,6 +12,7 @@ const DEMO_PRICES: Record<string, string> = {
   BTCUSD: process.env.DEMO_BTC_PRICE_18 ?? "110000000000000000000000"
 };
 const ZERO32 = `0x${"0".repeat(64)}`;
+const ONE_18 = 1_000_000_000_000_000_000n;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,15 +30,43 @@ function rateLimit(request: NextRequest) {
   return existing.count > 30;
 }
 
+function price18ToNumber(value: string) {
+  const raw = BigInt(value);
+  const whole = raw / ONE_18;
+  const fraction = (raw % ONE_18) / 1_000_000_000_000n;
+  return Number(whole) + Number(fraction) / 1_000_000;
+}
+
+function numberToPrice18(value: number) {
+  if (!Number.isFinite(value) || value <= 0) throw new Error("Invalid MM price");
+  const fixed = value.toFixed(8);
+  const [whole, fraction = ""] = fixed.split(".");
+  return (BigInt(whole) * ONE_18 + BigInt(fraction.padEnd(18, "0").slice(0, 18))).toString();
+}
+
 function demoPayload(asset: string) {
+  const market = asset.startsWith("BTC") ? "BTC" : "ETH" as MMMarketKey;
+  const anchorPrice = price18ToNumber(DEMO_PRICES[asset]);
+  const snapshot = generateMMSnapshot({ market, anchorPrice, levels: 8, tradeCount: 8 });
+  const quantizedValue = numberToPrice18(snapshot.markPrice);
+
   return {
     asset,
-    source: "demo",
+    source: "demo-mm",
     testnetOnly: true,
+    mm: {
+      sequence: snapshot.sequence,
+      regime: snapshot.regime,
+      markPrice: snapshot.markPrice,
+      indexPrice: snapshot.indexPrice,
+      spreadBps: snapshot.spreadBps,
+      bestBid: snapshot.bestBid,
+      bestAsk: snapshot.bestAsk
+    },
     updateData: [{
       temporalNumericValue: {
         timestampNs: String(BigInt(Date.now()) * 1_000_000n),
-        quantizedValue: DEMO_PRICES[asset]
+        quantizedValue
       },
       id: FEEDS[asset],
       publisherMerkleRoot: ZERO32,
@@ -57,7 +87,7 @@ export async function GET(request: NextRequest) {
   const oracleMode = (process.env.NEXT_PUBLIC_ORACLE_MODE ?? process.env.ORACLE_MODE ?? "demo").toLowerCase();
   if (oracleMode === "demo") {
     return NextResponse.json(demoPayload(asset), {
-      headers: { "cache-control": "no-store", "x-symbasis-oracle-mode": "demo" }
+      headers: { "cache-control": "no-store", "x-symbasis-oracle-mode": "demo-mm" }
     });
   }
 
