@@ -4,10 +4,11 @@ pragma solidity ^0.8.28;
 import {SymbasisVault} from "./SymbasisVault.sol";
 import {MarketRegistry} from "./MarketRegistry.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
+import {TwoStepOwnable} from "./utils/TwoStepOwnable.sol";
 
 /// @notice Testnet perpetual engine using isolated margin and 6-decimal USD notional accounting.
 ///         Oracle prices use 18 decimals.
-contract PerpEngine {
+contract PerpEngine is TwoStepOwnable {
     uint256 private constant BPS = 10_000;
     uint256 private constant DAY = 1 days;
 
@@ -24,7 +25,6 @@ contract PerpEngine {
     MarketRegistry public immutable markets;
     IPriceOracle public immutable oracle;
 
-    address public owner;
     bool public paused;
 
     mapping(address => mapping(bytes32 => Position)) public positions;
@@ -60,11 +60,6 @@ contract PerpEngine {
         int256 realizedPnl
     );
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "NOT_OWNER");
-        _;
-    }
-
     modifier whenNotPaused() {
         require(!paused, "PAUSED");
         _;
@@ -77,7 +72,6 @@ contract PerpEngine {
         vault = SymbasisVault(vaultAddress);
         markets = MarketRegistry(marketRegistry);
         oracle = IPriceOracle(priceOracle);
-        owner = msg.sender;
     }
 
     function setPaused(bool value) external onlyOwner {
@@ -134,15 +128,17 @@ contract PerpEngine {
         emit PositionOpened(msg.sender, marketId, isLong, sizeUsd, margin, price, leverageBps);
     }
 
+    /// @notice Closing remains available during emergency pause so users can reduce risk.
     /// @param closeBps 1..10000, where 10000 closes the full position.
     /// @param limitPrice For a long close, minimum acceptable price. For a short close, maximum acceptable price.
-    function closePosition(bytes32 marketId, uint32 closeBps, uint256 limitPrice) external whenNotPaused {
+    function closePosition(bytes32 marketId, uint32 closeBps, uint256 limitPrice) external {
         require(closeBps > 0 && closeBps <= BPS, "BAD_CLOSE_BPS");
         require(limitPrice > 0, "ZERO_LIMIT_PRICE");
-        _close(msg.sender, marketId, closeBps, limitPrice, false, address(0));
+        _close(msg.sender, marketId, closeBps, limitPrice);
     }
 
-    function liquidate(address trader, bytes32 marketId) external whenNotPaused {
+    /// @notice Liquidation remains available during emergency pause to protect solvency.
+    function liquidate(address trader, bytes32 marketId) external {
         require(isLiquidatable(trader, marketId), "NOT_LIQUIDATABLE");
         Position memory p = positions[trader][marketId];
         MarketRegistry.Market memory market = markets.getMarket(marketId);
@@ -197,19 +193,7 @@ contract PerpEngine {
         return equity <= int256(maintenance);
     }
 
-    function transferOwnership(address nextOwner) external onlyOwner {
-        require(nextOwner != address(0), "ZERO_ADDRESS");
-        owner = nextOwner;
-    }
-
-    function _close(
-        address trader,
-        bytes32 marketId,
-        uint32 closeBps,
-        uint256 limitPrice,
-        bool,
-        address
-    ) internal {
+    function _close(address trader, bytes32 marketId, uint32 closeBps, uint256 limitPrice) internal {
         Position storage stored = positions[trader][marketId];
         require(stored.sizeUsd > 0, "NO_POSITION");
         MarketRegistry.Market memory market = markets.getMarket(marketId);
