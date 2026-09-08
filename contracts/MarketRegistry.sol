@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-contract MarketRegistry {
+import {TwoStepOwnable} from "./utils/TwoStepOwnable.sol";
+
+contract MarketRegistry is TwoStepOwnable {
     struct Market {
         string symbol;
         bytes32 feedId;
@@ -12,7 +14,6 @@ contract MarketRegistry {
         bool active;
     }
 
-    address public owner;
     mapping(bytes32 => Market) private _markets;
     bytes32[] private _marketIds;
 
@@ -26,15 +27,6 @@ contract MarketRegistry {
     );
     event MarketStatusUpdated(bytes32 indexed marketId, bool active);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "NOT_OWNER");
-        _;
-    }
-
-    constructor() {
-        owner = msg.sender;
-    }
-
     function addMarket(
         bytes32 marketId,
         string calldata symbol,
@@ -44,7 +36,8 @@ contract MarketRegistry {
         uint256 maxPositionSize,
         uint256 maxOpenInterest
     ) external onlyOwner {
-        require(bytes(symbol).length > 0, "EMPTY_SYMBOL");
+        require(marketId != bytes32(0), "ZERO_MARKET_ID");
+        require(bytes(symbol).length > 0 && bytes(symbol).length <= 32, "BAD_SYMBOL");
         require(feedId != bytes32(0), "ZERO_FEED");
         require(_markets[marketId].feedId == bytes32(0), "MARKET_EXISTS");
         _validateRisk(maxLeverageBps, maintenanceMarginBps, maxPositionSize, maxOpenInterest);
@@ -99,11 +92,6 @@ contract MarketRegistry {
 
     function getMarketIds() external view returns (bytes32[] memory) {
         return _marketIds;
-    }
-
-    function transferOwnership(address nextOwner) external onlyOwner {
-        require(nextOwner != address(0), "ZERO_ADDRESS");
-        owner = nextOwner;
     }
 
     function _validateRisk(
