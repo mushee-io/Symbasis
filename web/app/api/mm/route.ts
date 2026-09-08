@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateMMSnapshot, MMMarketKey } from "@/lib/mm/engine";
+import { ORACLE_LABEL, ORACLE_MODE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -35,7 +36,8 @@ export async function GET(request: NextRequest) {
       {
         ok: true,
         mode: "SIMULATED_TESTNET_LIQUIDITY",
-        settlementOracle: "STORK",
+        settlementOracle: ORACLE_LABEL,
+        oracleMode: ORACLE_MODE,
         snapshot
       },
       {
