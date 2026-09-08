@@ -6,28 +6,61 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: symbasis-horizen-testnet-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: horizen-testnet
+    env:
+      HORIZEN_TESTNET_RPC_URL: https://horizen-testnet.rpc.caldera.xyz/http
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - run: npm run compile
-      - name: Verify Horizen testnet RPC
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile contracts
+        run: npm run compile
+
+      - name: Run full contract test suite
+        run: npm test
+
+      - name: Verify live Horizen testnet and Stork
         run: npm run check:testnet
+
+      - name: Validate deployer credential is configured
+        shell: bash
         env:
-          HORIZEN_TESTNET_RPC_URL: https://horizen-testnet.rpc.caldera.xyz/http
-      - name: Deploy Symbasis stack
+          PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PRIVATE_KEY:-}" ]; then
+            echo "HORIZEN_DEPLOYER_PRIVATE_KEY is not configured in the horizen-testnet environment."
+            exit 1
+          fi
+
+      - name: Deploy and finalize Symbasis stack
         run: npm run deploy:testnet
         env:
           PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY }}
-          HORIZEN_TESTNET_RPC_URL: https://horizen-testnet.rpc.caldera.xyz/http
-      - uses: actions/upload-artifact@v4
+
+      - name: Verify deployed contracts on Horizen
+        run: npm run verify:testnet
+
+      - name: Upload verified deployment artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: symbasis-horizen-testnet-deployment
-          path: deployments/horizen-testnet.json
+          path: |
+            deployments/horizen-testnet.json
+            deployments/horizen-testnet.web.env
           if-no-files-found: error
+          retention-days: 30
