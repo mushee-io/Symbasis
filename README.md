@@ -13,7 +13,7 @@ Symbasis is a testnet-first perpetual trading protocol with AI-assisted risk int
 - Explorer: `https://explorer-testnet.horizen.io/`
 - Faucet / Hub: `https://hub-testnet.horizen.io/`
 - Gas token: ETH
-- Stork oracle: `0xacC0a0cF13571d30B4b8637996F5D6D774d4fd62`
+- Stork contract: `0xacC0a0cF13571d30B4b8637996F5D6D774d4fd62`
 
 ## What is implemented
 
@@ -22,19 +22,22 @@ Symbasis is a testnet-first perpetual trading protocol with AI-assisted risk int
 - `MockUSDC.sol` — 6-decimal test collateral with a rate-limited public faucet
 - `SymbasisVault.sol` — deposits, withdrawals, reserved margin, protocol liquidity and PnL settlement
 - `MarketRegistry.sol` — ETH-PERP / BTC-PERP market configuration, leverage and OI limits
+- `DemoPriceOracle.sol` — testnet-only, Stork-compatible update surface with configured feeds and bounded public price moves
 - `StorkOracleAdapter.sol` — Stork pull-oracle updates, runtime update fee, freshness checks and invalid-price rejection
 - `PerpEngine.sol` — long/short positions, isolated margin, leverage, slippage guards, partial/full closes, PnL, funding framework, liquidation, position/OI caps
 - `ConfidentialIntentRegistry.sol` — stores private-strategy commitments and attested result hashes without publishing raw mandates
 
 ### Markets
 
-Deployment config creates:
+Deployment creates:
 
-- `ETH-PERP` using Stork `ETHUSD`
-- `BTC-PERP` using Stork `BTCUSD`
+- `ETH-PERP`
+- `BTC-PERP`
 - max leverage: 10x
 - maintenance margin: 5%
 - testnet position and open-interest caps
+
+Both oracle modes use the same ETHUSD/BTCUSD feed identifiers, so switching oracle implementations does not require changing market IDs or the trading engine.
 
 ### Trading terminal
 
@@ -45,7 +48,7 @@ The Next.js app in `web/` includes:
 - Horizen faucet link and gas balance
 - test sUSDC faucet, approval, deposit and withdrawal
 - ETH/BTC market selector
-- real-session Stork price trace
+- live-session oracle price trace
 - long / short order ticket
 - leverage slider and position sizing
 - 0.5% market-order slippage protection
@@ -57,21 +60,33 @@ The Next.js app in `web/` includes:
 
 ## AI risk layer
 
-`web/app/api/risk/route.ts` provides an explainable V1 risk baseline using leverage, collateral concentration, volatility and funding inputs. It returns:
-
-- risk score and level
-- recommended leverage
-- suggested margin / position size
-- approximate liquidation-distance warning
-- human-readable risk flags
+`web/app/api/risk/route.ts` provides an explainable V1 risk baseline using leverage, collateral concentration, volatility and funding inputs. It returns risk score/level, recommended leverage, suggested margin/position size, an approximate liquidation-distance warning, and human-readable risk flags.
 
 V1 is intentionally advisory. It cannot sign transactions or control wallet funds.
 
-## Stork integration
+## Oracle modes
 
-Stork is a pull oracle. The web server fetches the latest signed payload from Stork, preserves nanosecond timestamps and price integers as strings, then the wallet pushes the signed update through `StorkOracleAdapter` before trading.
+Symbasis now has two explicit testnet deployment modes.
 
-Set this **server-side only** in `web/.env.local`:
+### `demo` — default / no Stork API key required
+
+`DemoPriceOracle` is deployed on Horizen testnet and seeded with test ETH/BTC prices. It intentionally exposes a Stork-compatible `getUpdateFee` / `updatePrices` interface so the frontend uses the same transaction path in both modes.
+
+Safety constraints:
+
+- testnet-only contract
+- only owner can configure feeds
+- unknown feeds rejected
+- public price updates limited to ±5% per transaction
+- stale prices rejected
+- no oracle fee
+- signature fields are ignored only in demo mode
+
+This proves the complete protocol flow without presenting the data as live market data.
+
+### `stork` — signed oracle mode
+
+`StorkOracleAdapter` fetches and verifies the Stork contract's signed pull-oracle updates. The server-side API key is required only for this mode:
 
 ```env
 STORK_API_KEY=...
@@ -94,67 +109,93 @@ Current privacy path:
 
 See [`vela/README.md`](./vela/README.md).
 
-Start the official VELA local stack:
-
-```bash
-./scripts/vela-local.sh
-```
-
 ## Install and test contracts
 
 ```bash
 npm install
 cp .env.example .env
+npm run typecheck
 npm run compile
 npm test
 npm run check:testnet
 ```
 
-The suite covers:
-
-- 6-decimal collateral precision
-- margin reservation / withdrawal blocking
-- long and short PnL
-- partial closes
-- funding
-- permissionless liquidation
-- slippage rejection
-- emergency pause controls
-- owner/engine authorization
-- stale Stork price rejection
-- randomized isolated-loss bound checks
-- confidential-intent permissions
+The suite covers collateral precision, margin reservation, long/short PnL, partial closes, funding, liquidation, slippage, emergency exits, authorization, stale Stork data, demo-oracle bounds, isolated-loss invariants, and confidential-intent permissions.
 
 ## Deploy to Horizen testnet
 
-Fund a deployment wallet with Horizen testnet ETH, then set locally:
+Fund a fresh deployment wallet with Horizen testnet ETH and set its key securely as `PRIVATE_KEY` locally or `HORIZEN_DEPLOYER_PRIVATE_KEY` in the GitHub `horizen-testnet` environment.
 
-```env
-PRIVATE_KEY=0x...
-```
+Do not paste private keys into issues, commits, chat, or frontend environment variables.
 
-Deploy:
+### Deploy now without Stork
 
 ```bash
-npm run deploy:testnet
+ORACLE_MODE=demo npm run deploy:testnet
+ORACLE_MODE=demo npm run verify:testnet
+ORACLE_MODE=demo npm run smoke:testnet
 ```
 
-The deployment script refuses to broadcast unless the connected chain ID is exactly `2651420`, deploys the full stack, creates ETH/BTC markets, seeds protocol test liquidity and writes:
+### Deploy with Stork later
+
+```bash
+ORACLE_MODE=stork STORK_API_KEY=... npm run deploy:testnet
+ORACLE_MODE=stork STORK_API_KEY=... npm run verify:testnet
+ORACLE_MODE=stork STORK_API_KEY=... npm run smoke:testnet
+```
+
+The GitHub **Deploy Horizen Testnet** workflow also exposes `demo` / `stork` as a dropdown. `demo` is the default and requires only the funded deployer secret.
+
+A successful deployment writes:
 
 ```text
 deployments/horizen-testnet.json
+deployments/horizen-testnet.web.env
+deployments/horizen-testnet-smoke.json
 ```
 
-Copy the resulting addresses into `web/.env.local`:
+The smoke artifact must contain:
+
+```json
+{ "status": "PASS" }
+```
+
+The smoke test performs a real sequence against the deployed Horizen contracts:
+
+```text
+mint/claim sUSDC
+→ approve vault
+→ deposit collateral
+→ update oracle
+→ open ETH-PERP long
+→ confirm position exists
+→ update price again
+→ verify PnL
+→ close position
+→ confirm margin released
+→ withdraw collateral
+→ commit private strategy hash
+→ PASS
+```
+
+## Web environment
+
+The deployment script generates `deployments/horizen-testnet.web.env`. Use those values in Vercel or `web/.env.local`.
+
+Important variables include:
 
 ```env
+NEXT_PUBLIC_ORACLE_MODE=demo
 NEXT_PUBLIC_MOCK_USDC_ADDRESS=0x...
 NEXT_PUBLIC_VAULT_ADDRESS=0x...
 NEXT_PUBLIC_MARKET_REGISTRY_ADDRESS=0x...
+NEXT_PUBLIC_ORACLE_ADDRESS=0x...
 NEXT_PUBLIC_STORK_ADAPTER_ADDRESS=0x...
 NEXT_PUBLIC_PERP_ENGINE_ADDRESS=0x...
 NEXT_PUBLIC_CONFIDENTIAL_INTENT_REGISTRY_ADDRESS=0x...
 ```
+
+`NEXT_PUBLIC_STORK_ADAPTER_ADDRESS` is retained as a backwards-compatible frontend alias and points to the selected oracle contract.
 
 ## Run the trading terminal
 
@@ -176,7 +217,7 @@ Connect wallet
 → claim sUSDC
 → approve vault
 → deposit collateral
-→ refresh signed Stork price
+→ refresh selected oracle
 → run Symbasis risk analysis
 → open ETH/BTC long or short
 → observe margin + PnL + liquidation price
@@ -189,16 +230,19 @@ Connect wallet
 
 ## CI
 
-`.github/workflows/ci.yml` compiles contracts, runs all tests, type-checks the frontend and runs a production Next.js build on every push / pull request.
+`.github/workflows/ci.yml` type-checks deployment tooling, compiles contracts, runs the full test suite, audits production web dependencies, type-checks/builds the frontend, and checks live Horizen testnet connectivity on every push / pull request.
 
 ## Security notes
 
 - testnet only
 - private keys and API secrets must never be committed
-- stale and non-positive oracle prices are rejected
+- demo oracle values are explicitly simulated and must not be represented as live market data
+- stale/non-positive oracle prices are rejected
 - market-order slippage is bounded
 - leverage and open interest are capped
 - margin is reserved at the vault level
 - isolated position losses are capped at posted position margin
-- contracts have owner / engine authorization and emergency pause controls
+- emergency pause blocks new risk while preserving exits/liquidations
+- privileged ownership transfers use two-step acceptance
+- the vault engine is permanently locked after deployment finalization
 - this repository has not received a professional smart-contract audit
