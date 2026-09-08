@@ -2,146 +2,114 @@ import { NextRequest, NextResponse } from "next/server";
 
 const STORK_API = "https://rest.jp.stork-oracle.network/v1/prices/latest";
 const ALLOWED_ASSETS = new Set(["ETHUSD", "BTCUSD"]);
-const WINDOW_MS = 60_000;
-const MAX_REQUESTS_PER_WINDOW = 20;
-const MAX_UPSTREAM_BYTES = 1_000_000;
-const CACHE_MS = 2_000;
-
-type RateState = { count: number; resetAt: number };
-type CacheState = { expiresAt: number; payload: unknown };
-
-const rateState = new Map<string, RateState>();
-const payloadCache = new Map<string, CacheState>();
+const FEEDS: Record<string, string> = {
+  ETHUSD: "0x59102b37de83bdda9f38ac8254e596f0d9ac61d2035c07936675e87342817160",
+  BTCUSD: "0x7404e3d104ea7841c3d9e6fd20adfe99b4ad586bc08d8f3bd3afef894cf184de"
+};
+const DEMO_PRICES: Record<string, string> = {
+  ETHUSD: process.env.DEMO_ETH_PRICE_18 ?? "3500000000000000000000",
+  BTCUSD: process.env.DEMO_BTC_PRICE_18 ?? "110000000000000000000000"
+};
+const ZERO32 = `0x${"0".repeat(64)}`;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function clientKey(request: NextRequest) {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || request.headers.get("x-real-ip") || "unknown";
-}
-
-function isRateLimited(key: string) {
+const buckets = new Map<string, { count: number; resetAt: number }>();
+function rateLimit(request: NextRequest) {
+  const key = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
   const now = Date.now();
-  const current = rateState.get(key);
-  if (!current || current.resetAt <= now) {
-    rateState.set(key, { count: 1, resetAt: now + WINDOW_MS });
+  const existing = buckets.get(key);
+  if (!existing || now >= existing.resetAt) {
+    buckets.set(key, { count: 1, resetAt: now + 60_000 });
     return false;
   }
-  current.count += 1;
-  return current.count > MAX_REQUESTS_PER_WINDOW;
+  existing.count += 1;
+  return existing.count > 30;
 }
 
-function hex(value: unknown, bytes?: number) {
-  const text = String(value ?? "");
-  const expected = bytes ? bytes * 2 : undefined;
-  if (!/^0x[0-9a-fA-F]+$/.test(text)) return null;
-  if (expected && text.length !== expected + 2) return null;
-  return text;
+function demoPayload(asset: string) {
+  return {
+    asset,
+    source: "demo",
+    testnetOnly: true,
+    updateData: [{
+      temporalNumericValue: {
+        timestampNs: String(BigInt(Date.now()) * 1_000_000n),
+        quantizedValue: DEMO_PRICES[asset]
+      },
+      id: FEEDS[asset],
+      publisherMerkleRoot: ZERO32,
+      valueComputeAlgHash: ZERO32,
+      r: ZERO32,
+      s: ZERO32,
+      v: 27
+    }]
+  };
 }
 
 export async function GET(request: NextRequest) {
+  if (rateLimit(request)) return NextResponse.json({ error: "Too many oracle requests" }, { status: 429 });
+
   const asset = (request.nextUrl.searchParams.get("asset") ?? "ETHUSD").toUpperCase();
-  if (!ALLOWED_ASSETS.has(asset)) {
-    return NextResponse.json({ error: "Unsupported asset" }, { status: 400 });
-  }
+  if (!ALLOWED_ASSETS.has(asset)) return NextResponse.json({ error: "Unsupported asset" }, { status: 400 });
 
-  if (isRateLimited(clientKey(request))) {
-    return NextResponse.json(
-      { error: "Too many oracle refresh requests. Try again shortly." },
-      { status: 429, headers: { "Retry-After": "60" } }
-    );
-  }
-
-  const cached = payloadCache.get(asset);
-  if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json(cached.payload, {
-      headers: { "Cache-Control": "private, no-store" }
+  const oracleMode = (process.env.NEXT_PUBLIC_ORACLE_MODE ?? process.env.ORACLE_MODE ?? "demo").toLowerCase();
+  if (oracleMode === "demo") {
+    return NextResponse.json(demoPayload(asset), {
+      headers: { "cache-control": "no-store", "x-symbasis-oracle-mode": "demo" }
     });
   }
 
   const apiKey = process.env.STORK_API_KEY;
   if (!apiKey) {
-    return NextResponse.json(
-      { error: "Oracle service is not configured" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "STORK_API_KEY is required when oracle mode is stork" }, { status: 503 });
   }
 
   let response: Response;
   try {
-    response = await fetch(`${STORK_API}?assets=${encodeURIComponent(asset)}`, {
+    response = await fetch(`${STORK_API}?assets=${asset}`, {
       headers: { Authorization: `Basic ${apiKey}`, Accept: "application/json" },
       cache: "no-store",
-      signal: AbortSignal.timeout(7_000)
+      signal: AbortSignal.timeout(10_000)
     });
   } catch {
-    return NextResponse.json({ error: "Stork oracle request timed out" }, { status: 504 });
+    return NextResponse.json({ error: "Stork request timed out or failed" }, { status: 504 });
   }
 
-  if (!response.ok) {
-    return NextResponse.json(
-      { error: "Stork oracle is temporarily unavailable" },
-      { status: 502 }
-    );
-  }
+  if (!response.ok) return NextResponse.json({ error: `Stork API returned ${response.status}` }, { status: 502 });
 
   const rawText = await response.text();
-  if (rawText.length === 0 || rawText.length > MAX_UPSTREAM_BYTES) {
-    return NextResponse.json({ error: "Invalid Stork response size" }, { status: 502 });
-  }
+  if (!rawText || rawText.length > 1_000_000) return NextResponse.json({ error: "Invalid Stork response size" }, { status: 502 });
 
+  const safeText = rawText.replace(/:(\s*)(-?\d{16,})([,}\]])/g, `:$1"$2"$3`);
   let body: any;
   try {
-    // Stork timestamps are nanoseconds and exceed JavaScript's safe integer range.
-    const safeText = rawText.replace(/:(\s*)(-?\d{16,})([,}\]])/g, `:$1"$2"$3`);
     body = JSON.parse(safeText);
   } catch {
-    return NextResponse.json({ error: "Malformed Stork response" }, { status: 502 });
+    return NextResponse.json({ error: "Stork returned malformed JSON" }, { status: 502 });
   }
 
   const entry = body?.data?.[asset];
   const signed = entry?.stork_signed_price;
   const signature = signed?.timestamped_signature?.signature;
-  if (!signed || !signature) {
-    return NextResponse.json({ error: `No signed ${asset} price returned` }, { status: 502 });
-  }
+  if (!signed || !signature) return NextResponse.json({ error: `No signed ${asset} price returned` }, { status: 502 });
 
-  const timestampNs = String(signed.timestamped_signature?.timestamp ?? "");
-  const quantizedValue = String(signed.price ?? "");
-  if (!/^\d{16,}$/.test(timestampNs) || !/^-?\d+$/.test(quantizedValue)) {
-    return NextResponse.json({ error: "Invalid signed numeric values" }, { status: 502 });
-  }
+  const checksum = String(signed.calculation_alg?.checksum ?? "");
+  const updateData = [{
+    temporalNumericValue: {
+      timestampNs: String(signed.timestamped_signature.timestamp),
+      quantizedValue: String(signed.price)
+    },
+    id: signed.encoded_asset_id,
+    publisherMerkleRoot: signed.publisher_merkle_root,
+    valueComputeAlgHash: checksum.startsWith("0x") ? checksum : `0x${checksum}`,
+    r: signature.r,
+    s: signature.s,
+    v: typeof signature.v === "string" ? Number(signature.v) : signature.v
+  }];
 
-  const encodedAssetId = hex(signed.encoded_asset_id, 32);
-  const publisherMerkleRoot = hex(signed.publisher_merkle_root, 32);
-  const r = hex(signature.r, 32);
-  const s = hex(signature.s, 32);
-  const checksumRaw = String(signed.calculation_alg?.checksum ?? "");
-  const valueComputeAlgHash = hex(checksumRaw.startsWith("0x") ? checksumRaw : `0x${checksumRaw}`, 32);
-  const v = Number(signature.v);
-
-  if (!encodedAssetId || !publisherMerkleRoot || !valueComputeAlgHash || !r || !s || !Number.isInteger(v) || v < 0 || v > 255) {
-    return NextResponse.json({ error: "Invalid Stork signature payload" }, { status: 502 });
-  }
-
-  const payload = {
-    asset,
-    updateData: [
-      {
-        temporalNumericValue: { timestampNs, quantizedValue },
-        id: encodedAssetId,
-        publisherMerkleRoot,
-        valueComputeAlgHash,
-        r,
-        s,
-        v
-      }
-    ]
-  };
-
-  payloadCache.set(asset, { expiresAt: Date.now() + CACHE_MS, payload });
-  return NextResponse.json(payload, {
-    headers: { "Cache-Control": "private, no-store" }
+  return NextResponse.json({ asset, source: "stork", testnetOnly: true, updateData }, {
+    headers: { "cache-control": "no-store", "x-symbasis-oracle-mode": "stork" }
   });
 }
