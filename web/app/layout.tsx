@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./symbasis.css";
+import "./route-overrides.css";
 
 export const metadata: Metadata = {
   title: "Symbasis — Autonomous Perpetual Markets",
