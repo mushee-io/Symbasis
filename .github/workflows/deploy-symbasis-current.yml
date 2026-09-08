@@ -1,0 +1,103 @@
+name: Deploy Symbasis Horizen — CURRENT
+
+on:
+  workflow_dispatch:
+    inputs:
+      oracle_mode:
+        description: Oracle mode for this deployment
+        required: true
+        default: demo
+        type: choice
+        options:
+          - demo
+          - stork
+
+permissions:
+  contents: read
+
+concurrency:
+  group: symbasis-horizen-testnet-current
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: preflight → deploy → verify → smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: horizen-testnet
+    env:
+      HORIZEN_TESTNET_RPC_URL: https://horizen-testnet.rpc.caldera.xyz/http
+      ORACLE_MODE: ${{ inputs.oracle_mode }}
+      PRIVATE_KEY: ${{ secrets.HORIZEN_DEPLOYER_PRIVATE_KEY || secrets.PRIVATE_KEY }}
+      STORK_API_KEY: ${{ secrets.STORK_API_KEY }}
+
+    steps:
+      - name: Checkout CURRENT main
+        uses: actions/checkout@v5
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Confirm deployer secret is visible
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${PRIVATE_KEY:-}" ]; then
+            echo "::error::GitHub cannot see a deployer private-key secret."
+            echo "Add it at: Repository Settings → Secrets and variables → Actions → Repository secrets"
+            echo "Secret name must be HORIZEN_DEPLOYER_PRIVATE_KEY (preferred) or PRIVATE_KEY."
+            echo "Do NOT add the key under Variables. Do NOT paste it into workflow inputs."
+            exit 1
+          fi
+          echo "Deployer secret detected (value remains masked)."
+
+      - name: Typecheck deployment tooling
+        run: npm run typecheck
+
+      - name: Compile contracts
+        run: npm run compile
+
+      - name: Run full contract test suite
+        run: npm test
+
+      - name: Verify live Horizen testnet
+        run: npm run check:testnet
+
+      - name: Verify signer, chain and funded gas balance
+        run: npx hardhat run scripts/preflight-deploy.ts --network horizen_testnet
+
+      - name: Validate Stork credential when Stork mode is selected
+        if: ${{ inputs.oracle_mode == 'stork' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${STORK_API_KEY:-}" ]; then
+            echo "::error::STORK_API_KEY is required in stork mode. Choose demo mode until Stork access is provisioned."
+            exit 1
+          fi
+          echo "Stork credential detected."
+
+      - name: Deploy and finalize Symbasis stack
+        run: npm run deploy:testnet
+
+      - name: Verify deployed contracts on Horizen
+        run: npm run verify:testnet
+
+      - name: Run ETH-PERP end-to-end smoke trade
+        run: npm run smoke:testnet
+
+      - name: Upload verified deployment artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbasis-horizen-testnet-current-${{ inputs.oracle_mode }}
+          path: |
+            deployments/horizen-testnet.json
+            deployments/horizen-testnet.web.env
+            deployments/horizen-testnet-smoke.json
+          if-no-files-found: error
+          retention-days: 30
