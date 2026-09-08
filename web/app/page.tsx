@@ -8,13 +8,13 @@ export default function MarketingHome() {
         <header className="marketing-top marketing-top-v2">
           <Link href="/" className="home-brand" aria-label="Symbasis home"><SymbasisBrand /></Link>
           <nav className="marketing-nav" aria-label="Symbasis">
-            <Link href="/trade">Trade</Link>
-            <Link href="/markets">Markets</Link>
-            <Link href="/portfolio">Portfolio</Link>
-            <Link href="/liquidity">Liquidity</Link>
-            <Link href="/mm">AI / MM</Link>
-            <Link href="/rewards">Rewards</Link>
-            <Link href="/more">Docs</Link>
+            <Link href="/trade">TRADE</Link>
+            <Link href="/markets">MARKETS</Link>
+            <Link href="/portfolio">PORTFOLIO</Link>
+            <Link href="/liquidity">LIQUIDITY</Link>
+            <Link href="/mm">MM</Link>
+            <Link href="/rewards">REWARDS</Link>
+            <Link href="/more">MORE</Link>
           </nav>
           <div className="marketing-actions marketing-actions-v2">
             <span className="home-network"><i />HORIZEN TESTNET</span>
@@ -61,10 +61,10 @@ export default function MarketingHome() {
             </div>
             <div className="home-directory">
               <div className="directory-brand"><SymbasisBrand light/><span>PRIVATE AI PERPETUAL<br/>MARKET INFRASTRUCTURE</span></div>
-              <div><b>PRODUCT</b><Link href="/trade">Trade</Link><Link href="/markets">Markets</Link><Link href="/portfolio">Portfolio</Link><Link href="/liquidity">Liquidity</Link></div>
-              <div><b>SYSTEMS</b><Link href="/mm">Symbasis MM</Link><Link href="/risk">Risk</Link><Link href="/private">Private Markets</Link><Link href="/rewards">Testnet Rewards</Link></div>
-              <div><b>NETWORK</b><a href="https://explorer-testnet.horizen.io" target="_blank" rel="noreferrer">Explorer ↗</a><a href="https://hub-testnet.horizen.io/" target="_blank" rel="noreferrer">Faucet ↗</a><Link href="/more">Protocol Information</Link></div>
-              <div><b>RESOURCES</b><Link href="/more">Documentation ↗</Link><a href="https://github.com/mushee-io/Symbasis" target="_blank" rel="noreferrer">GitHub ↗</a><Link href="/more">Status</Link></div>
+              <div><b>PRODUCT</b><Link href="/trade">TRADE</Link><Link href="/markets">MARKETS</Link><Link href="/portfolio">PORTFOLIO</Link><Link href="/liquidity">LIQUIDITY</Link></div>
+              <div><b>SYSTEMS</b><Link href="/mm">SYMBASIS MM</Link><Link href="/risk">RISK</Link><Link href="/private">PRIVATE MARKETS</Link><Link href="/rewards">TESTNET REWARDS</Link></div>
+              <div><b>NETWORK</b><a href="https://explorer-testnet.horizen.io" target="_blank" rel="noreferrer">EXPLORER ↗</a><a href="https://hub-testnet.horizen.io/" target="_blank" rel="noreferrer">FAUCET ↗</a><Link href="/more">PROTOCOL INFORMATION</Link></div>
+              <div><b>RESOURCES</b><Link href="/more">DOCUMENTATION ↗</Link><a href="https://github.com/mushee-io/Symbasis" target="_blank" rel="noreferrer">GITHUB ↗</a><Link href="/more">STATUS</Link></div>
             </div>
           </div>
           <div className="home-black-bottom"><span>SYMBASIS</span><span>© 2026 Symbasis. Testnet software.</span><span>Autonomous Markets for a More Open Financial System.</span></div>
