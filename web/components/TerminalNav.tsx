@@ -5,13 +5,13 @@ import { usePathname } from "next/navigation";
 import SymbasisBrand from "./SymbasisBrand";
 
 const links = [
-  ["/trade", "Trade"],
-  ["/markets", "Markets"],
-  ["/portfolio", "Portfolio"],
-  ["/liquidity", "Liquidity"],
+  ["/trade", "TRADE"],
+  ["/markets", "MARKETS"],
+  ["/portfolio", "PORTFOLIO"],
+  ["/liquidity", "LIQUIDITY"],
   ["/mm", "MM"],
-  ["/rewards", "Rewards"],
-  ["/more", "More"]
+  ["/rewards", "REWARDS"],
+  ["/more", "MORE"]
 ] as const;
 
 export default function TerminalNav() {
