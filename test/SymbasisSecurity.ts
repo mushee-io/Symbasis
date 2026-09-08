@@ -61,21 +61,59 @@ describe("Symbasis security invariants", function () {
     ).to.be.revertedWith("LONG_SLIPPAGE");
   });
 
-  it("pause controls block new risk and deposits", async function () {
+  it("emergency pause blocks new risk but keeps exits and free withdrawals live", async function () {
     const { trader, vault, engine, marketId } = await fixture();
+
+    await engine.connect(trader).openPosition(
+      marketId,
+      true,
+      ethers.parseUnits("1000", 6),
+      20_000,
+      ethers.parseUnits("3030", 18)
+    );
+
     await engine.setPaused(true);
+    await vault.setPaused(true);
+
     await expect(
       engine.connect(trader).openPosition(
         marketId,
         true,
-        ethers.parseUnits("1000", 6),
-        20_000,
+        ethers.parseUnits("100", 6),
+        10_000,
         ethers.parseUnits("3030", 18)
       )
     ).to.be.revertedWith("PAUSED");
-
-    await vault.setPaused(true);
     await expect(vault.connect(trader).deposit(1)).to.be.revertedWith("PAUSED");
+
+    await expect(
+      engine.connect(trader).closePosition(marketId, 10_000, ethers.parseUnits("2900", 18))
+    ).to.emit(engine, "PositionReduced");
+
+    await expect(vault.connect(trader).withdraw(ethers.parseUnits("100", 6)))
+      .to.emit(vault, "CollateralWithdrawn");
+  });
+
+  it("locks the engine and protocol liquidity after deployment finalization", async function () {
+    const { other, vault } = await fixture();
+    await vault.lockEngine();
+
+    await expect(vault.setEngine(other.address)).to.be.revertedWith("ENGINE_LOCKED");
+    await expect(vault.withdrawLiquidity(other.address, 1)).to.be.revertedWith("LIQUIDITY_WITHDRAWALS_LOCKED");
+  });
+
+  it("uses two-step ownership so a bad transfer cannot instantly seize admin", async function () {
+    const { owner, other, vault } = await fixture();
+    await vault.transferOwnership(other.address);
+
+    expect(await vault.owner()).to.equal(owner.address);
+    expect(await vault.pendingOwner()).to.equal(other.address);
+    await expect(vault.connect(other).setPaused(true)).to.be.revertedWith("NOT_OWNER");
+
+    await vault.connect(other).acceptOwnership();
+    expect(await vault.owner()).to.equal(other.address);
+    await vault.connect(other).setPaused(true);
+    expect(await vault.paused()).to.equal(true);
   });
 
   it("caps isolated-position loss at posted margin across randomized prices", async function () {
@@ -92,7 +130,7 @@ describe("Symbasis security invariants", function () {
     let seed = 0x12345678;
     for (let i = 0; i < 40; i++) {
       seed = (seed * 1664525 + 1013904223) >>> 0;
-      const price = 100 + (seed % 5901); // $100..$6000
+      const price = 100 + (seed % 5901);
       await oracle.setPrice(feedId, ethers.parseUnits(price.toString(), 18));
       const pnl = await engine.getUnrealizedPnl(trader.address, marketId);
       expect(pnl).to.be.gte(-margin);
@@ -122,7 +160,7 @@ describe("Symbasis security invariants", function () {
     expect(price).to.equal(ethers.parseUnits("3000", 18));
   });
 
-  it("stores only a commitment for private strategy intent", async function () {
+  it("stores only a commitment and protects attestor rotation with two steps", async function () {
     const { trader, other } = await fixture();
     const Registry = await ethers.getContractFactory("ConfidentialIntentRegistry");
     const intents = await Registry.deploy();
@@ -144,5 +182,11 @@ describe("Symbasis security invariants", function () {
     await expect(
       intents.connect(other).recordAttestation(intentId, ethers.id("result"), ethers.id("attestation"))
     ).to.be.revertedWith("NOT_ATTESTOR");
+
+    await intents.setAttestor(other.address);
+    expect(await intents.attestor()).to.not.equal(other.address);
+    await intents.connect(other).acceptAttestor();
+    await intents.connect(other).recordAttestation(intentId, ethers.id("result"), ethers.id("attestation"));
+    expect((await intents.intents(intentId)).executed).to.equal(true);
   });
 });
